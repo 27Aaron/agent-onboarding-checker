@@ -47,7 +47,8 @@ const apiStatus = document.querySelector("#apiStatus");
 const resultTabs = [...document.querySelectorAll(".result-tab")];
 const resultPanels = [...document.querySelectorAll(".result-panel")];
 const summaryTiles = [...document.querySelectorAll("[data-open-tab]")];
-const copyPanelBtn = document.querySelector("#copyPanelBtn");
+const copyClaudeBtn = document.querySelector("#copyClaudeBtn");
+const copyCodexBtn = document.querySelector("#copyCodexBtn");
 let modelFetchTimer;
 let modelTestTimer;
 let availableModelIds = [];
@@ -942,6 +943,52 @@ function buildClaudeSettings() {
   );
 }
 
+function buildCodexConfigToml() {
+  return [
+    'approval_policy = "on-request"',
+    'sandbox_mode = "workspace-write"',
+    'default_permissions = "agent_onboarding"',
+    "",
+    "[sandbox_workspace_write]",
+    "network_access = false",
+    "exclude_tmpdir_env_var = true",
+    "exclude_slash_tmp = true",
+    "",
+    "[features]",
+    "hooks = true",
+    "",
+    '[permissions.agent_onboarding.filesystem.":project_roots"]',
+    '"." = "write"',
+    '"**/.env" = "none"',
+    '"**/.env.*" = "none"',
+    '"secrets/**" = "none"',
+    '".aws/credentials" = "none"',
+    '".ssh/**" = "none"',
+    "",
+    "[shell_environment_policy]",
+    'inherit = "core"',
+    'exclude = ["*KEY*", "*SECRET*", "*TOKEN*", "*COOKIE*"]',
+    "",
+    "[[hooks.PreToolUse]]",
+    'matcher = "Bash|Edit|Write|apply_patch"',
+    "",
+    "[[hooks.PreToolUse.hooks]]",
+    'type = "command"',
+    'command = \'/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/pre_tool_use_policy.py"\'',
+    "timeout = 30",
+    'statusMessage = "Checking project policy"',
+    "",
+    "[[hooks.PermissionRequest]]",
+    'matcher = "Bash|Edit|Write|apply_patch"',
+    "",
+    "[[hooks.PermissionRequest.hooks]]",
+    'type = "command"',
+    'command = \'/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/pre_tool_use_policy.py"\'',
+    "timeout = 30",
+    'statusMessage = "Checking approval request"',
+  ].join("\n");
+}
+
 function buildGuardHookScript() {
   return [
     "#!/usr/bin/env bash",
@@ -1044,7 +1091,80 @@ function buildGuardHookScript() {
   ].join("\n");
 }
 
-function buildProjectSetupScript() {
+function buildCodexGuardHookScript() {
+  return [
+    "#!/usr/bin/env python3",
+    "import json",
+    "import re",
+    "import sys",
+    "",
+    "try:",
+    "    payload = json.load(sys.stdin)",
+    "except Exception:",
+    "    sys.exit(0)",
+    "",
+    "event = str(payload.get('hook_event_name') or '')",
+    "tool = str(payload.get('tool_name') or '')",
+    "tool_input = payload.get('tool_input') or {}",
+    "command = str(tool_input.get('command') or '')",
+    "serialized_input = json.dumps(tool_input, ensure_ascii=False)",
+    "content = f'{command}\\n{serialized_input}'",
+    "",
+    "def emit_pretool_deny(reason):",
+    "    print(json.dumps({",
+    "        'hookSpecificOutput': {",
+    "            'hookEventName': 'PreToolUse',",
+    "            'permissionDecision': 'deny',",
+    "            'permissionDecisionReason': reason,",
+    "        }",
+    "    }, ensure_ascii=False))",
+    "",
+    "def emit_permission_deny(reason):",
+    "    print(json.dumps({",
+    "        'hookSpecificOutput': {",
+    "            'hookEventName': 'PermissionRequest',",
+    "            'decision': {",
+    "                'behavior': 'deny',",
+    "                'message': reason,",
+    "            }",
+    "        }",
+    "    }, ensure_ascii=False))",
+    "",
+    "def deny(reason):",
+    "    if event == 'PermissionRequest':",
+    "        emit_permission_deny(reason)",
+    "    else:",
+    "        emit_pretool_deny(reason)",
+    "",
+    "protected_patterns = [",
+    "    r'(^|/)\\.env(\\..*)?($|\\s|\"|\\')',",
+    "    r'(^|/)secrets(/|$)',",
+    "    r'(^|/)\\.aws/credentials($|\\s|\"|\\')',",
+    "    r'(^|/)\\.ssh(/|$)',",
+    "    r'(^|/)id_rsa($|\\s|\"|\\')',",
+    "    r'(^|/)id_ed25519($|\\s|\"|\\')',",
+    "]",
+    "dangerous_bash_patterns = [",
+    "    r'\\bgit\\s+push\\b',",
+    "    r'\\b(?:npm|pnpm|yarn)\\s+publish\\b',",
+    "    r'\\brm\\s+-rf\\s+(?:/|~|\\*|\\.)',",
+    "    r'\\bsudo\\b',",
+    "    r'\\b(?:drop|truncate)\\s+database\\b',",
+    "]",
+    "",
+    "if any(re.search(pattern, content, re.I) for pattern in protected_patterns):",
+    "    deny('禁止读取或修改密钥、环境变量、SSH 凭证和 secrets 文件。')",
+    "    sys.exit(0)",
+    "",
+    "if tool == 'Bash' and any(re.search(pattern, command, re.I) for pattern in dangerous_bash_patterns):",
+    "    deny('高风险命令已拦截：需要人工改写任务或手动执行。')",
+    "    sys.exit(0)",
+    "",
+    "sys.exit(0)",
+  ].join("\n");
+}
+
+function buildClaudeProjectSetupScript() {
   const claudeSection = buildClaudeMdSection();
   const settingsJson = buildClaudeSettings();
   const guardScript = buildGuardHookScript();
@@ -1106,26 +1226,108 @@ function buildProjectSetupScript() {
   ].join("\n");
 }
 
-function buildExecutablePasteCommand() {
+function buildCodexProjectSetupScript() {
+  const agentsSection = buildClaudeMdSection();
+  const configToml = buildCodexConfigToml();
+  const hookScript = buildCodexGuardHookScript();
   return [
-    "bash <<'AGENT_ONBOARDING_INSTALL'",
-    buildProjectSetupScript(),
-    "AGENT_ONBOARDING_INSTALL",
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "",
+    "mkdir -p .codex/hooks",
+    "timestamp=\"$(date +%Y%m%d%H%M%S)\"",
+    "",
+    "backup_if_exists() {",
+    "  if [ -e \"$1\" ]; then",
+    "    cp \"$1\" \"$1.bak.$timestamp\"",
+    "  fi",
+    "}",
+    "",
+    "replace_or_append_section() {",
+    "  file=\"$1\"",
+    "  start_marker=\"$2\"",
+    "  end_marker=\"$3\"",
+    "  section_file=\"$4\"",
+    "  if [ -f \"$file\" ] && grep -Fq \"$start_marker\" \"$file\"; then",
+    "    awk -v start=\"$start_marker\" -v end=\"$end_marker\" -v section=\"$section_file\" '",
+    "      $0 == start { while ((getline line < section) > 0) print line; skipping=1; next }",
+    "      $0 == end { skipping=0; next }",
+    "      !skipping { print }",
+    "    ' \"$file\" > \"$file.tmp.$$\"",
+    "    mv \"$file.tmp.$$\" \"$file\"",
+    "  else",
+    "    touch \"$file\"",
+    "    if [ -s \"$file\" ]; then printf '\\n\\n' >> \"$file\"; fi",
+    "    cat \"$section_file\" >> \"$file\"",
+    "  fi",
+    "}",
+    "",
+    "backup_if_exists AGENTS.md",
+    "section_file=\"$(mktemp)\"",
+    "cat > \"$section_file\" <<'AGENT_ONBOARDING_AGENTS'",
+    agentsSection,
+    "AGENT_ONBOARDING_AGENTS",
+    "replace_or_append_section AGENTS.md '<!-- AGENT_ONBOARDING_CHECKER_START -->' '<!-- AGENT_ONBOARDING_CHECKER_END -->' \"$section_file\"",
+    "rm -f \"$section_file\"",
+    "",
+    "backup_if_exists .codex/config.toml",
+    "cat > .codex/config.toml <<'AGENT_ONBOARDING_CODEX_CONFIG'",
+    configToml,
+    "AGENT_ONBOARDING_CODEX_CONFIG",
+    "",
+    "backup_if_exists .codex/hooks/pre_tool_use_policy.py",
+    "cat > .codex/hooks/pre_tool_use_policy.py <<'AGENT_ONBOARDING_CODEX_HOOK'",
+    hookScript,
+    "AGENT_ONBOARDING_CODEX_HOOK",
+    "chmod +x .codex/hooks/pre_tool_use_policy.py",
+    "",
+    "printf '\\nCodex onboarding files are ready in %s\\n' \"$(pwd)\"",
+    "printf '  - AGENTS.md\\n'",
+    "printf '  - .codex/config.toml\\n'",
+    "printf '  - .codex/hooks/pre_tool_use_policy.py\\n'",
   ].join("\n");
 }
 
-copyPanelBtn.addEventListener("click", async () => {
+function buildExecutablePasteCommand(setupScript, marker) {
+  return [
+    `bash <<'${marker}'`,
+    setupScript,
+    marker,
+  ].join("\n");
+}
+
+async function copyInstallCommand(button, setupScript, marker, toolName, fileSummary) {
   try {
-    await navigator.clipboard.writeText(buildExecutablePasteCommand());
-    copyPanelBtn.textContent = "命令已复制";
-    apiStatus.textContent = "可执行命令已复制。进入目标项目目录后直接粘贴回车，会创建 CLAUDE.md、项目级 settings 和 Hooks。";
+    await navigator.clipboard.writeText(buildExecutablePasteCommand(setupScript, marker));
+    button.textContent = "已复制";
+    apiStatus.textContent = `${toolName} 安装命令已复制。进入目标项目目录后直接粘贴回车，会创建 ${fileSummary}。`;
   } catch {
-    copyPanelBtn.textContent = "复制失败";
+    button.textContent = "复制失败";
     apiStatus.textContent = "浏览器拒绝访问剪贴板，可以换到 HTTPS/localhost 后再试。";
   }
   window.setTimeout(() => {
-    copyPanelBtn.textContent = "复制安装脚本";
+    button.textContent = toolName;
   }, 1600);
+}
+
+copyClaudeBtn.addEventListener("click", () => {
+  copyInstallCommand(
+    copyClaudeBtn,
+    buildClaudeProjectSetupScript(),
+    "AGENT_ONBOARDING_CLAUDE_INSTALL",
+    "Claude",
+    "CLAUDE.md、项目级 .claude/settings.json 和 Hooks",
+  );
+});
+
+copyCodexBtn.addEventListener("click", () => {
+  copyInstallCommand(
+    copyCodexBtn,
+    buildCodexProjectSetupScript(),
+    "AGENT_ONBOARDING_CODEX_INSTALL",
+    "Codex",
+    "AGENTS.md、项目级 .codex/config.toml 和 Hooks",
+  );
 });
 
 function parseModelIds(data) {
