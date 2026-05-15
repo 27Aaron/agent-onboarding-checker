@@ -24,6 +24,10 @@
   --compact-pad: 12px;
   --tiny-pad: 8px;
   --surface-gap: 14px;
+  --panel-shadow: 8px 8px 0 var(--soft-shadow);
+  --float-shadow: 6px 6px 0 var(--soft-shadow);
+  --button-shadow: 4px 4px 0 var(--soft-shadow);
+  --button-shadow-hover: 5px 5px 0 var(--soft-shadow);
   color-scheme: light;
 }
 
@@ -105,7 +109,7 @@ body.settings-open {
   border: 2px solid var(--line);
   background: var(--panel);
   padding: var(--hero-pad);
-  box-shadow: 8px 8px 0 var(--soft-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .kicker {
@@ -142,14 +146,14 @@ h1 {
   border: 2px solid var(--line);
   background: var(--card);
   padding: var(--surface-pad);
-  box-shadow: 8px 8px 0 var(--soft-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .api-panel {
   border: 2px solid var(--line);
   background: var(--card);
   padding: var(--surface-pad);
-  box-shadow: 8px 8px 0 var(--soft-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .ai-dock {
@@ -161,7 +165,7 @@ h1 {
   border: 2px solid var(--line);
   background: var(--card);
   padding: var(--surface-pad);
-  box-shadow: 8px 8px 0 var(--soft-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .dock-copy span {
@@ -486,7 +490,7 @@ select {
   border: 2px solid var(--line);
   background: var(--card);
   padding: var(--tiny-pad);
-  box-shadow: 6px 6px 0 var(--soft-shadow);
+  box-shadow: var(--float-shadow);
 }
 
 .select-menu[hidden],
@@ -567,12 +571,12 @@ button {
   background: var(--line);
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 4px 4px 0 var(--soft-shadow);
+  box-shadow: var(--button-shadow);
 }
 
 button:hover {
   transform: translate(-1px, -1px);
-  box-shadow: 5px 5px 0 var(--soft-shadow);
+  box-shadow: var(--button-shadow-hover);
 }
 
 .ghost {
@@ -645,7 +649,7 @@ button[data-state="error"] {
   border: 2px solid var(--line);
   background: var(--card);
   padding: var(--surface-pad);
-  box-shadow: 6px 6px 0 var(--card-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .risk-card {
@@ -662,14 +666,14 @@ button[data-state="error"] {
   flex-direction: column;
   justify-content: center;
   padding: var(--surface-pad);
-  box-shadow: 8px 8px 0 var(--soft-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .handoff-panel {
   border: 2px solid var(--line);
   padding: var(--surface-pad);
   background: var(--card);
-  box-shadow: 8px 8px 0 var(--soft-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .handoff-head {
@@ -752,6 +756,15 @@ button[data-state="error"] {
   background: var(--green);
 }
 
+.risk-card.pending {
+  color: #fff;
+  background: var(--blue);
+}
+
+body[data-theme="dark"] .risk-card.pending {
+  color: #111315;
+}
+
 .risk-score {
   margin-top: var(--tiny-pad);
   font-family: Georgia, "Times New Roman", serif;
@@ -788,8 +801,12 @@ button[data-state="error"] {
   padding: var(--surface-pad);
   color: var(--ink);
   background: var(--card);
-  box-shadow: 5px 5px 0 var(--card-shadow);
+  box-shadow: var(--panel-shadow);
   text-align: left;
+}
+
+.summary-tile:hover {
+  box-shadow: var(--panel-shadow);
 }
 
 .summary-tile span {
@@ -821,7 +838,7 @@ button[data-state="error"] {
   border: 2px solid var(--line);
   background: var(--card);
   padding: var(--surface-pad);
-  box-shadow: 6px 6px 0 var(--card-shadow);
+  box-shadow: var(--panel-shadow);
 }
 
 .workbench-head {
@@ -885,7 +902,7 @@ button[data-state="error"] {
   padding: var(--surface-pad);
   color: var(--ink);
   background: var(--card);
-  box-shadow: 6px 6px 0 var(--soft-shadow);
+  box-shadow: var(--float-shadow);
   white-space: normal;
 }
 

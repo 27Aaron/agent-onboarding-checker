@@ -180,48 +180,57 @@ const providers = [
   },
 ];
 
-const SYSTEM_PROMPT = `你是一名 Claude Code / Codex 安全入职官。请用中文分析用户准备交给这两个编码 Agent 的任务，把建议写成可以直接放进产品界面的结构化结果。
+const SYSTEM_PROMPT = `你是“AI 入职体检器”的安全策略生成器，专门分析用户准备交给 Claude Code 或 Codex 的一条具体任务。
 
-请只输出 JSON，不要 Markdown，不要代码块，不要额外解释。JSON 结构如下：
+你的目标：把这条任务改写成可执行的上岗边界，明确权限、人工确认点、沙箱和 hooks。所有内容都必须围绕用户当前任务，不要混入其他案例、行业或数据对象。
+
+只输出 JSON，不要 Markdown，不要代码块，不要解释。JSON 必须使用下面的字段：
 
 {
   "riskLevel": "低风险 / 中风险 / 高风险 三选一",
-  "riskReason": "一句话说明为什么这样判定风险",
+  "riskReason": "一句话说明本任务为什么是这个风险等级",
   "claudeNotes": [
-    "指出 Claude Code 里哪些会真正生效、哪些只是 CLAUDE.md 提醒，3-5 条"
+    "Claude Code 中真正会生效的配置或边界，3-5 条"
   ],
   "codexNotes": [
-    "指出 Codex 里哪些会真正生效、哪些只是 AGENTS.md 指令，3-5 条"
+    "Codex 中真正会生效的配置或边界，3-5 条"
   ],
   "permissions": [
-    "Claude Code / Codex 应该拿到的临时权限，3-5 条，越具体越好"
+    "只给完成当前任务所需的最小临时权限，3-5 条"
   ],
   "approvals": [
-    "必须暂停并请求人类确认的动作，3-5 条，越具体越好"
+    "必须暂停并让人确认的具体动作，3-5 条"
   ],
   "workPolicy": [
-    "写给 Claude Code / Codex 的工作制度，5-7 条，每条必须是可执行的制度"
+    "写给 Claude Code / Codex 的工作制度，5-7 条，每条都是可执行规则"
   ],
   "sandboxRules": [
-    "沙箱配置建议，4-6 条，每条要说明限制、记录或回滚边界"
+    "沙箱、文件、网络、日志或回滚边界，4-6 条"
   ],
   "hooks": [
-    "hook-name：触发条件 -> 暂停、记录、阻断或要求确认的动作"
+    "hook-name：触发条件 -> Claude Code ask / Codex PermissionRequest / deny / 记录 / additionalContext"
   ]
 }
 
-要求：
-- 只针对 Claude Code 和 Codex，不要扩展到其他编码工具
-- 准确区分 Claude Code 的 CLAUDE.md、.claude/settings.json、permissions、PreToolUse hooks、sandbox
-- 准确区分 Codex 的 AGENTS.md、.codex/config.toml、sandbox_mode、approval_policy、default_permissions、hooks 和项目 trust
-- Codex 的 PreToolUse 只能可靠 deny 或补充上下文，不要声称 permissionDecision: ask 会拦住工具；需要人工确认时依赖 approval_policy = on-request 或 PermissionRequest
-- 不要声称自动脱敏、日志保留、回滚快照、外部发送审批已经实现；除非明确说明需要另接系统
-- 不要建议用户把真实密钥、cookie、隐私数据直接交给 Claude Code 或 Codex
-- 不要鼓励绕过审批、删除日志、隐藏操作记录
-- 不要写“加强安全意识”这类空话，要写具体规则
-- permissions 和 approvals 不能照抄本地规则，要结合任务改写
-- 普通人要能看懂，但技术部分必须准确
-- 可以吸收本地规则，但不要机械重复`;
+任务对齐规则：
+- 每个字段都要引用任务里的关键对象和动作，例如仓库、网页、数据库、云服务器、服务器日志、截图、PR、删除、发送等。
+- 如果任务没有客户数据，就不要写客户数据；没有数据库，就不要写数据库；没有外部发送，就不要凭空写发送审批。
+- 如果用户明确说“不要发送 / 不要推送 / 不要删除 / 先确认”，把它写成边界和确认点，不要反过来说已经允许执行。
+- permissions 写“能做什么”，approvals 写“做到哪一步必须停下来问人”，两者不要互相重复。
+- hooks 要贴近真实工具调用，例如 Bash、Read/Edit/Write、WebFetch、PermissionRequest、UserPromptSubmit、数据库命令、外部发送命令。
+
+Claude Code / Codex 准确性规则：
+- CLAUDE.md 和 AGENTS.md 只是模型指令或上下文提醒，不是真正的强制边界。
+- Claude Code 真正会执行的是 .claude/settings.json 里的 permissions、sandbox、hooks 和工具审批。
+- Codex 真正会执行的是 .codex/config.toml 里的 sandbox_mode、approval_policy、default_permissions、hooks、rules 和项目 trust。
+- Codex 的 PreToolUse 不要声称可以可靠 ask；它适合 deny 或 additionalContext。需要人工确认时依赖 approval_policy = on-request 或 PermissionRequest。
+- 不要声称自动脱敏、30 天日志留存、快照回滚、外部发送审批已经实现；除非说明需要另接业务系统。
+
+安全边界：
+- 不要建议把真实密码、cookie、token、API key、SSH key、客户隐私直接交给 Claude Code 或 Codex。
+- 不要鼓励绕过审批、关闭沙箱、隐藏日志、删除审计记录、使用 danger-full-access + never。
+- 不要写“加强安全意识”这类空话；每条都必须能被人、配置或 hook 执行。
+- 普通人要能看懂，技术细节必须准确。`;
 
 const rules = [
   {
@@ -246,7 +255,7 @@ const rules = [
     keys: ["删除", "清空", "覆盖", "重置", "rm", "drop"],
     permission: "破坏性操作必须进入沙箱",
     approval: "删除、覆盖、重置、清空这类不可逆动作",
-    weight: 4,
+    weight: 7,
   },
   {
     keys: ["改代码", "修 bug", "运行测试", "PR", "代码", "仓库"],
@@ -255,27 +264,285 @@ const rules = [
     weight: 2,
   },
   {
-    keys: ["浏览器", "网页", "点击", "表单", "下载"],
+    keys: ["浏览器", "网页", "点击", "表单", "下载", "截图", "竞品", "官网", "价格页"],
     permission: "浏览器沙箱，只允许访问白名单网站",
     approval: "点击付款、确认、删除、提交表单等关键按钮",
     weight: 2,
   },
+  {
+    keys: ["数据库", "SQL", "CSV", "名单", "流失"],
+    permission: "只读数据库查询权限，导出结果默认脱敏并留在项目目录",
+    approval: "执行导出、扩大查询范围或处理可识别用户数据",
+    weight: 4,
+  },
+  {
+    keys: ["云服务器", "服务器", "线上", "生产", "日志", "回滚", "部署"],
+    permission: "生产环境只读观测权限，只允许查看日志和配置",
+    approval: "执行回滚、重启、部署或修改线上配置",
+    weight: 7,
+  },
 ];
 
 const taskSamples = [
-  "帮我登录公司后台，导出本月客户数据，整理成表格，再发给销售群。",
-  "帮我修复这个仓库里的登录 bug，允许运行测试和改代码，但不要修改 .env，不要直接 git push。",
-  "帮我打开竞品官网和定价页，截图记录差异，整理成一份产品对比文档。",
-  "帮我登录邮箱，筛选最近一周的客户投诉邮件，汇总高频问题并草拟回复。",
-  "帮我读取这份订单表格，找出退款率异常的客户和产品，生成一份内部分析报告。",
-  "帮我把会议录音整理成纪要，更新到飞书文档，并发到项目群里。",
-  "帮我清理项目文件夹，删除重复截图和过期导出文件，只保留最新版本。",
-  "帮我修改网站首页文案，跑完测试后提交 PR，但不要碰支付和登录相关代码。",
-  "帮我进入云控制台查看线上日志，定位 500 报错原因，并给出回滚建议。",
-  "帮我抓取今天 X、Reddit 和即刻上关于 AI Agent 的热门讨论，写成公众号选题备忘。",
-  "帮我连接数据库导出流失用户名单，按城市和付费档位分组，发给运营同事。",
-  "帮我检查 CI 配置，修掉构建失败的问题，并把变更说明写进 PR 描述。",
+  "帮我修复仓库里的登录回调 bug，可以改代码和跑测试，但不要读取 .env，也不要 git push。",
+  "帮我用浏览器打开竞品官网、价格页和帮助中心，截图记录差异，整理成一份对比文档。",
+  "帮我连接只读数据库，统计近 30 天流失用户，按城市和套餐分组生成 CSV，不要外发。",
+  "帮我登录云服务器查看线上错误日志，定位 500 报错原因，给出回滚方案但不要执行任何命令。",
+  "帮我检查 CI 配置并修复构建失败，跑完测试后生成 PR 描述，但不要提交或推送。",
 ];
+
+const curatedSampleResults = new Map([
+  [
+    taskSamples[0],
+    {
+      riskLevel: "中风险",
+      riskReason: "任务需要修改登录回调代码并运行测试，同时明确禁止读取 .env 和 git push，风险集中在凭证文件和代码提交边界。",
+      claudeNotes: [
+        "CLAUDE.md 只能提醒不要读取 .env，真正要在 .claude/settings.json 的 Read/Edit/Write deny 和 PreToolUse hook 中拦截。",
+        "Claude Code 可以获得当前仓库的代码读写权限，但写入范围应限制在登录回调相关文件和测试文件。",
+        "Bash 运行测试可以放行；git commit 走确认，git push、git tag、gh pr create/merge/edit/close、publish/release 由 hook deny。",
+        "依赖安装、访问外部网络或扩大认证改动范围前应由 Claude Code ask；提交前只输出 diff 摘要和测试结果。",
+      ],
+      codexNotes: [
+        "AGENTS.md 只能作为任务说明，Codex 的强制边界应写入 .codex/config.toml、default_permissions 和 rules。",
+        "Codex 建议使用 workspace-write + on-request，允许仓库内修复和测试，禁止 danger-full-access + never。",
+        "Codex rules 会把 git commit 设为 prompt，把 git push、git tag、gh pr create/merge/edit/close 和 gh release 设为 forbidden。",
+        "需要人工确认时依赖 PermissionRequest、on-request 或 prefix_rule prompt；PreToolUse 只返回 deny 或 additionalContext。",
+      ],
+      permissions: [
+        "读取仓库源码、测试和 CI 配置的权限，但排除 .env、secrets、.ssh、.aws/credentials。",
+        "在当前工作分支修改登录回调相关源码和对应测试的权限。",
+        "运行项目现有测试、lint 或 typecheck 的权限。",
+        "生成本地 diff、测试摘要和 PR 描述草稿的权限。",
+      ],
+      approvals: [
+        "任何读取 .env、token、cookie、私钥或 secrets 的动作必须阻断并请求人类处理。",
+        "修改认证配置、回调 URL、会话存储或权限中间件前必须说明影响范围并等待确认。",
+        "依赖安装、访问外部网络或修改 CI 凭证前必须请求确认。",
+        "git commit 走确认；git push、git tag、gh pr create/merge/edit/close、gh release 或发布包必须阻断。",
+      ],
+      workPolicy: [
+        "只围绕登录回调 bug 修改代码，不顺手重构无关认证模块。",
+        "不得读取、复制、打印或推断 .env 中的任何值。",
+        "所有改动必须留在当前工作分支，并在交付时列出变更文件。",
+        "测试失败时先报告失败用例和怀疑原因，不通过删除测试来制造通过。",
+        "交付只给出本地修复、测试结果和 PR 描述草稿，不推送远端。",
+      ],
+      sandboxRules: [
+        "文件写入限制在当前仓库，.env、secrets、.ssh、.aws/credentials 和 .git 控制目录禁止写入。",
+        "网络默认关闭；依赖安装或访问外部文档必须触发审批。",
+        "Bash 允许测试命令；依赖安装和 git commit 需要确认，远端 PR/release/push、git tag、publish、sudo 和危险 rm 直接拒绝。",
+        "保留命令、测试结果和文件 diff，便于人工 review。",
+      ],
+      hooks: [
+        "secret-file-guard：Read/Edit/Write/MultiEdit 命中 .env、secrets、私钥路径 -> deny",
+        "remote-action-deny：Bash 命中 git push、git tag、gh pr create/merge/edit/close、gh release、publish -> deny",
+        "commit-review：Bash 命中 git commit -> Claude Code ask / Codex prefix_rule prompt",
+        "dependency-approval：Bash 命中 npm/pnpm/yarn/bun/pip/uv/poetry install/add -> Claude Code ask / Codex prefix_rule prompt",
+      ],
+    },
+  ],
+  [
+    taskSamples[1],
+    {
+      riskLevel: "中风险",
+      riskReason: "任务需要访问外部竞品网页并保存截图，主要风险是外部网络访问、误触网页动作和输出文件范围。",
+      claudeNotes: [
+        "CLAUDE.md 可以说明只访问竞品官网、价格页和帮助中心，但 WebFetch/浏览器访问仍要由 .claude/settings.json 和 hook 控制。",
+        "Claude Code 只应保存截图、网页摘录和对比文档到项目输出目录。",
+        "访问新增域名、下载文件或浏览器登录、填表、购买、提交或删除类交互前应由 PreToolUse 返回 ask。",
+        "Claude Code 不应登录竞品账号、输入凭证、提交表单、模拟购买或绕过 robots/付费墙。",
+      ],
+      codexNotes: [
+        "Codex 的 AGENTS.md 只能描述调研边界，实际网络边界依赖 .codex/config.toml 的 network_access 和 approval_policy。",
+        "Codex 默认 workspace-write 且网络关闭；访问竞品域名时通过 on-request 审批逐次放行。",
+        "Codex PreToolUse 不用 ask；对 mcp__browser__click/type/fill/submit 等命中 login/checkout/pay/purchase/subscribe/delete/confirm/cookie 的动作直接 deny。",
+        "截图和对比文档写入当前项目目录，外部发布或上传不自动执行。",
+      ],
+      permissions: [
+        "访问用户指定的竞品官网、价格页和帮助中心域名。",
+        "在项目输出目录保存截图、页面摘录和对比文档。",
+        "读取本地已有产品资料或模板，用于整理对比结构。",
+        "使用浏览器或 WebFetch 进行只读页面采集。",
+      ],
+      approvals: [
+        "访问任务外的新域名、跳转到登录页或打开下载链接前必须确认。",
+        "点击购买、提交、删除、订阅、登录，或在网页里填写账号、cookie、支付和联系信息前必须暂停。",
+        "保存包含账号、cookie 或个人信息的截图前必须人工审核。",
+        "向外部系统发布、上传或分享对比文档前必须确认。",
+      ],
+      workPolicy: [
+        "只做公开网页的只读观察，不登录、不提交表单、不模拟购买。",
+        "每张截图要标注来源页面和采集时间，便于复核。",
+        "对比文档只引用可见页面信息，不猜测未公开的内部策略。",
+        "所有截图和文档只写入项目输出目录。",
+        "遇到反爬、登录墙或付费墙时停止并说明限制。",
+      ],
+      sandboxRules: [
+        "网络默认按域名白名单放行，只允许访问任务列出的竞品域名。",
+        "文件写入限制在 screenshots/、research/ 或项目指定输出目录。",
+        "禁止读取本地密钥、cookie 存储和浏览器 profile 凭证。",
+        "下载二进制文件、执行网页脚本、打开本机应用或触发外部分享必须审批。",
+      ],
+      hooks: [
+        "domain-allowlist：WebFetch/curl/wget/浏览器访问非任务域名 -> Claude Code ask / Codex PermissionRequest",
+        "browser-action-guard：mcp/browser click/type/fill/submit/navigate/open 命中 login/signin/signup/checkout/pay/purchase/subscribe/delete/confirm/cookie -> Claude Code ask / Codex deny",
+        "download-egress-guard：下载可执行文件、scp/rsync/sftp/ftp 或 aws s3、gsutil、rclone、mail/sendmail -> prompt/deny",
+        "screenshot-audit：保存截图后 -> 记录 URL、文件名和时间戳",
+      ],
+    },
+  ],
+  [
+    taskSamples[2],
+    {
+      riskLevel: "高风险",
+      riskReason: "任务涉及只读数据库连接、近 30 天流失用户统计和 CSV 导出，即使禁止外发也包含可识别用户数据风险。",
+      claudeNotes: [
+        "CLAUDE.md 只能提醒数据库只读，真正的数据库命令、SQL 写操作和导出边界需要 .claude/settings.json、Bash ask/deny 和 PreToolUse hook。",
+        "Claude Code 不应接收真实数据库密码，凭证应由人类在受控通道输入或使用临时只读账号。",
+        "Claude Code 可以处理脱敏后的查询结果和聚合 CSV，但不能自动扩大查询范围。",
+        "导出 CSV 前必须把字段、时间范围和脱敏规则交给人审核。",
+      ],
+      codexNotes: [
+        "Codex 需要 workspace-write + on-request，数据库命令超出 sandbox 时必须触发审批。",
+        "AGENTS.md 不能阻止数据库误操作，psql/mysql/sqlite3 走 prompt，pg_dump/mysqldump/mongoexport 在 hooks 或 rules 中直接 forbidden。",
+        "Codex PreToolUse 对数据库导出只能 deny 或 additionalContext，人工确认应走 PermissionRequest 或 prefix_rule prompt。",
+        "CSV 只能写入项目输出目录，不自动上传、发送或复制到外部系统。",
+      ],
+      permissions: [
+        "使用临时只读数据库账号查询近 30 天流失用户相关表。",
+        "只读取城市、套餐、流失状态和必要统计字段，默认排除姓名、手机号、邮箱等直接标识。",
+        "在项目输出目录生成脱敏或聚合后的 CSV。",
+        "读取查询说明和数据字典，用于确认字段含义。",
+      ],
+      approvals: [
+        "连接数据库、输入凭证或读取连接串前必须由人确认。",
+        "执行导出、扩大时间范围、增加表或增加可识别字段前必须暂停；pg_dump/mysqldump/mongoexport 默认禁止。",
+        "CSV 生成后必须人工审核脱敏状态和文件路径。",
+        "任何外发、上传、邮件、群消息或共享链接动作必须阻断。",
+      ],
+      workPolicy: [
+        "只执行 SELECT 或等价只读查询，禁止 delete/update/insert/alter/drop/truncate 等写入或结构变更。",
+        "查询范围固定为近 30 天流失用户，不自行扩大范围。",
+        "结果优先聚合到城市和套餐维度，避免保留直接身份标识。",
+        "CSV 文件名、字段列表、行数和脱敏规则必须写入交付摘要。",
+        "不把数据库凭证、连接串或原始用户明细写入日志和文档。",
+      ],
+      sandboxRules: [
+        "数据库网络访问默认关闭，连接前通过审批放行指定 host 和只读账号。",
+        "CSV 只能写入项目 outputs/ 目录，禁止写入共享目录或云同步目录。",
+        "Bash 中 delete/update/insert/alter/drop/truncate 直接 deny，psql/mysql/sqlite3 连接默认确认，全量导出默认 deny。",
+        "命令日志保留 SQL 摘要、行数和输出路径，但不记录凭证和原始敏感值。",
+      ],
+      hooks: [
+        "db-connect-approval：Bash 命中 psql/mysql/sqlite3/连接串 -> Claude Code ask / Codex PermissionRequest 或 prefix_rule prompt",
+        "sql-danger-deny：SQL 命中 delete/update/insert/alter/drop/truncate -> deny",
+        "full-export-deny：Bash 命中 pg_dump/mysqldump/mongoexport -> deny",
+        "egress-deny：命中 upload、scp、rsync、aws s3、gsutil、rclone、mail/sendmail、飞书/Slack 发送 -> deny",
+      ],
+    },
+  ],
+  [
+    taskSamples[3],
+    {
+      riskLevel: "高风险",
+      riskReason: "任务需要登录云服务器查看线上日志，虽然要求不执行任何命令，但服务器访问和回滚建议都接近生产权限。",
+      claudeNotes: [
+        "CLAUDE.md 可以声明不执行命令，但真正要在 .claude/settings.json 和 Bash hook 中拦截 ssh、sudo、systemctl、docker、kubectl 等生产动作。",
+        "Claude Code 不应接触服务器私钥或密码，登录凭证由人类在受控终端或临时会话中处理。",
+        "如果需要查看日志，优先由人提供日志片段；ssh、journalctl 或云平台日志命令不应由 Agent 直接执行。",
+        "回滚方案只能写成建议和步骤清单，不自动执行。",
+      ],
+      codexNotes: [
+        "Codex 必须避免 danger-full-access + never，云服务器相关命令应通过 on-request 审批。",
+        "AGENTS.md 不能限制生产服务器操作，ssh、scp、rsync、sudo、systemctl、kubectl、helm、journalctl、pm2、supervisorctl、ansible-playbook 等要靠 hooks/rules 阻断。",
+        "Codex PreToolUse 可以 deny 生产命令；普通日志内容应由用户提供片段或通过 PermissionRequest 明确一次性审批。",
+        "服务器日志若包含 token、用户数据或内部 URL，输出前要做最小化摘录。",
+      ],
+      permissions: [
+        "读取用户提供的线上错误日志片段或只读日志输出。",
+        "查看与 500 报错相关的服务名、时间窗口、错误栈和部署版本信息。",
+        "在本地生成原因分析、影响范围和回滚方案文档。",
+        "读取仓库中与报错服务相关的配置和代码，用于比对日志。",
+      ],
+      approvals: [
+        "任何登录云服务器、使用 SSH 私钥或读取服务器凭证前必须由人确认。",
+        "执行任意服务器命令、ssh、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible-playbook、重启或回滚前必须阻断。",
+        "复制完整日志、包含 token/用户数据的日志片段或上传日志前必须审核。",
+        "把回滚方案转为实际操作、修改生产配置或触发部署前必须暂停。",
+      ],
+      workPolicy: [
+        "优先让人提供日志片段；如必须连接服务器，Agent 只生成命令建议，不直接执行 ssh 或 journalctl。",
+        "不执行修复、重启、回滚、部署或配置修改命令。",
+        "分析必须写清时间窗口、错误特征、可能原因和需要人工验证的证据。",
+        "回滚方案只作为文档交付，不触发任何生产动作。",
+        "日志摘录要去除 token、cookie、用户身份和内部密钥。",
+      ],
+      sandboxRules: [
+        "网络默认禁止连接云服务器，SSH 或日志系统访问必须逐次审批。",
+        "Bash 中 ssh、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible-playbook、scp、rsync 默认 deny。",
+        "日志文件只写入项目 incident/ 输出目录，禁止落到共享或同步目录。",
+        "保留访问目的、批准人、时间窗口和读取的日志文件名，避免记录凭证。",
+      ],
+      hooks: [
+        "server-login-deny：Bash 命中 ssh、云服务器地址或 SSH 私钥路径 -> deny",
+        "prod-command-deny：命中 sudo/systemctl/service/docker/kubectl/helm/journalctl/pm2/supervisorctl/terraform/ansible-playbook/回滚/重启 -> deny",
+        "log-secret-scan：日志输出包含 token、cookie、password、authorization -> 阻断并要求脱敏",
+        "rollback-doc-only：出现执行回滚、部署、restart 等动作 -> deny，只允许生成方案文档",
+      ],
+    },
+  ],
+  [
+    taskSamples[4],
+    {
+      riskLevel: "中风险",
+      riskReason: "任务需要修改 CI 配置、运行测试并生成 PR 描述，但明确禁止提交或推送，主要风险在 CI 凭证和远端动作。",
+      claudeNotes: [
+        "CLAUDE.md 可说明不提交不推送，实际要用 permissions 和 PreToolUse deny git push、git tag、gh pr create/merge/edit/close、CI secret 读取。",
+        "Claude Code 可以修改 CI 配置、脚本和测试相关文件，但不得读取 CI token 或仓库 secrets。",
+        "运行测试和构建命令可以放行；依赖安装、git commit 和访问外部服务需要确认。",
+        "最终只输出本地 diff、测试结果和 PR 描述文本。",
+      ],
+      codexNotes: [
+        "Codex 的 .codex/config.toml 应限制为 workspace-write + on-request，允许 CI 文件改动但拒绝远端推送。",
+        "default_permissions 要把 .git、.github secrets、.env、CI token 路径降为只读或 none。",
+        "PreToolUse/rules 对 git push、git tag、gh pr create/merge/edit/close、gh release、publish 等远端动作直接 deny。",
+        "Codex rules 将 git commit 设为 prompt，依赖安装设为 prompt；PermissionRequest 用于网络测试或修改大范围构建脚本前确认。",
+      ],
+      permissions: [
+        "读取仓库源码、CI 配置、构建脚本和测试日志。",
+        "修改 CI 配置文件、测试配置和必要的构建脚本。",
+        "运行本地测试、lint、typecheck 或 CI 等价命令。",
+        "生成 PR 描述、变更摘要和复现步骤文本。",
+      ],
+      approvals: [
+        "读取或修改 CI secrets、token、部署 key、.env 前必须阻断。",
+        "依赖安装、改变运行环境版本或访问外部服务前必须确认。",
+        "修改发布、部署、生产环境相关 CI job 前必须说明影响并等待确认。",
+        "git commit 走确认；git push、git tag、gh pr create/merge/edit/close、gh release 或任何远端提交动作必须阻断。",
+      ],
+      workPolicy: [
+        "只处理导致构建失败的 CI 配置和相关测试，不重写无关流水线。",
+        "每次修改后运行能复现问题的最小测试或等价检查。",
+        "不读取 CI secrets，不把 token 打印到日志。",
+        "交付时包含失败原因、修改文件、测试命令和 PR 描述草稿。",
+        "不提交、不推送、不创建 PR，只把结果交给人审核。",
+      ],
+      sandboxRules: [
+        "写入限制在仓库工作区，.git、secrets、.env、部署 key 路径禁止写入。",
+        "网络默认关闭；依赖安装、拉取远程资源或访问 CI 服务需要审批。",
+        "允许测试和构建命令；git commit 走确认，拒绝 git push、git tag、gh pr create/merge/edit/close、gh release、publish。",
+        "保留测试输出和 diff 摘要，便于人工复核。",
+      ],
+      hooks: [
+        "ci-secret-deny：Read/Edit 命中 CI secrets、token、.env、deploy key -> deny",
+        "remote-action-deny：Bash 命中 git push、git tag、gh pr create/merge/edit/close、gh release、publish -> deny",
+        "dependency-approval：Bash 命中 npm/pnpm/yarn/bun/pip/uv/poetry install/add 或 git commit -> Claude Code ask / Codex prefix_rule prompt",
+        "test-evidence：测试命令结束后 -> 记录命令、退出码和关键输出摘要",
+      ],
+    },
+  ],
+]);
 let sampleIndex = 0;
 
 promptInput.value = SYSTEM_PROMPT;
@@ -293,7 +560,18 @@ function updatePrimaryButtonLabel() {
 }
 
 function updateSampleButtonLabel() {
-  sampleBtn.textContent = `换个案例 ${sampleIndex + 1}/${taskSamples.length}`;
+  sampleBtn.textContent = "换个案例";
+}
+
+function getRandomSampleIndex() {
+  return Math.floor(Math.random() * taskSamples.length);
+}
+
+function applyTaskSample(index, { resetWorkspace = true } = {}) {
+  sampleIndex = ((index % taskSamples.length) + taskSamples.length) % taskSamples.length;
+  input.value = taskSamples[sampleIndex];
+  updateSampleButtonLabel();
+  if (resetWorkspace) resetResultWorkspaceForSample({ isRandomSample: true });
 }
 
 function getApiKeyCacheKey(providerId) {
@@ -520,11 +798,15 @@ function updateSummaryPreviews(permissionItems, approvalItems) {
   approvalPreview.textContent = summarizeItem(approvalItems, "访问新网站或要求额外权限时停下来问人");
 }
 
+function formatHandoffCount(total, unit) {
+  return Number.isFinite(total) ? `${total} ${unit}` : "待生成";
+}
+
 function updateHandoffSummary(source, permissionTotal, approvalTotal, sandboxLabel) {
   handoffMode.textContent = source;
-  handoffPermission.textContent = `${permissionTotal} 项权限`;
-  handoffApproval.textContent = `${approvalTotal} 个确认点`;
-  handoffSandbox.textContent = sandboxLabel;
+  handoffPermission.textContent = formatHandoffCount(permissionTotal, "项权限");
+  handoffApproval.textContent = formatHandoffCount(approvalTotal, "个确认点");
+  handoffSandbox.textContent = sandboxLabel || "待生成";
 }
 
 function setActiveResultTab(tab) {
@@ -547,7 +829,7 @@ function normalizeRiskLevel(value) {
 }
 
 function sandboxModeForRisk(level) {
-  return level === "高风险" ? "Strict" : level === "中风险" ? "Guarded" : "Light";
+  return level === "高风险" ? "严格" : level === "中风险" ? "守护" : "轻量";
 }
 
 function applyRiskResult(level, reason) {
@@ -555,6 +837,43 @@ function applyRiskResult(level, reason) {
   riskCard.className = `risk-card ${normalizedLevel === "低风险" ? "low" : normalizedLevel === "中风险" ? "medium" : ""}`;
   riskScore.textContent = normalizedLevel;
   riskReason.textContent = reason || "这个任务适合 Claude Code / Codex 自主处理，保留日志和只读边界即可。";
+}
+
+function resetResultWorkspaceForSample({ isRandomSample = false } = {}) {
+  const taskLabel = isRandomSample ? "当前案例" : "当前任务";
+  const introLine = isRandomSample ? "已随机放入一个案例。" : "当前任务已更新。";
+  const statusLine = isRandomSample
+    ? "随机案例已准备好，点击「体检任务」后生成风险判断和边界建议。"
+    : "任务内容已更新，点击「体检任务」后生成风险判断和边界建议。";
+  riskCard.className = "risk-card pending";
+  riskScore.textContent = "待体检";
+  riskReason.textContent = statusLine;
+  renderList(permissions, ["点击「体检任务」后生成最小权限边界"]);
+  renderList(approvals, ["点击「体检任务」后生成必须人工确认的动作"]);
+  renderList(sandboxRules, ["点击「体检任务」后生成沙箱、文件和网络边界"]);
+  renderList(hooks, ["点击「体检任务」后生成可落地的 hook 门卫"]);
+  renderList(claudeNotes, ["点击「体检任务」后生成 Claude Code 会真正生效的配置说明"]);
+  renderList(codexNotes, ["点击「体检任务」后生成 Codex 会真正生效的配置说明"]);
+  permissionCount.textContent = "待生成";
+  approvalCount.textContent = "待生成";
+  permissionPreview.textContent = "点击体检后生成权限边界";
+  approvalPreview.textContent = "点击体检后生成确认点";
+  sandboxLevel.textContent = "待生成";
+  hookCount.textContent = "待生成";
+  policyBadge.textContent = "待体检";
+  updateHandoffSummary("待体检", null, null, "待生成");
+  brief.textContent = [
+    introLine,
+    "",
+    `${taskLabel}：${input.value.trim() || "未填写任务"}`,
+    "",
+    "点击「体检任务」后，会根据当前内容生成工作制度、权限边界、人工确认点、沙箱规则和 hooks。",
+  ].join("\n");
+  if (!apiKeyInput.value.trim()) {
+    apiStatus.textContent = isRandomSample
+      ? "已随机放入一个案例。点击「体检任务」开始本地体检。"
+      : "任务内容已更新。点击「体检任务」开始本地体检。";
+  }
 }
 
 function toList(value) {
@@ -636,6 +955,48 @@ function formatPolicyBrief({ title, task, level, reason, workPolicy, approvals =
   return lines.join("\n");
 }
 
+function getCuratedSampleResult(text) {
+  return curatedSampleResults.get(String(text || "").trim()) || null;
+}
+
+function applyCuratedInspectionResult(result) {
+  const task = input.value.trim() || "未填写任务";
+  const level = normalizeRiskLevel(result.riskLevel) || "中风险";
+  const reason = result.riskReason || "";
+  const finalPermissions = toList(result.permissions);
+  const finalApprovals = toList(result.approvals);
+  const finalClaudeNotes = toList(result.claudeNotes);
+  const finalCodexNotes = toList(result.codexNotes);
+  const finalSandboxRules = toList(result.sandboxRules);
+  const finalHooks = toList(result.hooks);
+  const finalWorkPolicy = toList(result.workPolicy);
+
+  applyRiskResult(level, reason);
+  renderList(permissions, finalPermissions);
+  renderList(approvals, finalApprovals);
+  renderList(claudeNotes, finalClaudeNotes);
+  renderList(codexNotes, finalCodexNotes);
+  renderList(sandboxRules, finalSandboxRules);
+  renderList(hooks, finalHooks);
+  permissionCount.textContent = `${finalPermissions.length} 项`;
+  approvalCount.textContent = `${finalApprovals.length} 项`;
+  sandboxLevel.textContent = sandboxModeForRisk(level);
+  hookCount.textContent = `${finalHooks.length} 个`;
+  policyBadge.textContent = "精选版";
+  updateSummaryPreviews(finalPermissions, finalApprovals);
+  updateHandoffSummary("精选案例", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
+
+  brief.textContent = formatPolicyBrief({
+    title: "Claude Code / Codex 精选案例入职说明",
+    task,
+    level,
+    reason,
+    workPolicy: finalWorkPolicy,
+    approvals: finalApprovals,
+    checklist: DELIVERY_CHECKLIST,
+  });
+}
+
 function applyAiEnhancement(output) {
   const enhancement = parseAiEnhancement(output);
   const task = input.value.trim() || "未填写任务";
@@ -692,6 +1053,15 @@ function applyAiEnhancement(output) {
 
 function analyze() {
   const text = input.value.trim();
+  const curatedResult = getCuratedSampleResult(text);
+  if (curatedResult) {
+    applyCuratedInspectionResult(curatedResult);
+    if (!apiKeyInput.value.trim()) {
+      apiStatus.textContent = "已按精选案例生成本地体检结果。";
+    }
+    return;
+  }
+
   const matched = rules.filter((rule) => rule.keys.some((key) => text.includes(key)));
   const total = matched.reduce((sum, rule) => sum + rule.weight, 0);
   const level = total >= 7 ? "高风险" : total >= 4 ? "中风险" : "低风险";
@@ -751,12 +1121,13 @@ analyzeBtn.addEventListener("click", () => {
   }
   analyze();
 });
+input.addEventListener("input", () => {
+  resetResultWorkspaceForSample({ isRandomSample: false });
+});
 sampleBtn.addEventListener("click", () => {
   const currentIndex = taskSamples.findIndex((sample) => sample === input.value.trim());
-  sampleIndex = currentIndex >= 0 ? (currentIndex + 1) % taskSamples.length : (sampleIndex + 1) % taskSamples.length;
-  input.value = taskSamples[sampleIndex];
-  updateSampleButtonLabel();
-  analyze();
+  const nextIndex = currentIndex >= 0 ? currentIndex + 1 : sampleIndex + 1;
+  applyTaskSample(nextIndex);
 });
 resultTabs.forEach((button) => {
   button.addEventListener("click", () => setActiveResultTab(button.dataset.tab));
@@ -1195,22 +1566,73 @@ function buildClaudeSettings() {
           "MultiEdit(./.git/**)",
           "Bash(git push)",
           "Bash(git push *)",
+          "Bash(git tag*)",
+          "Bash(gh pr create*)",
+          "Bash(gh pr merge*)",
+          "Bash(gh pr edit*)",
+          "Bash(gh pr close*)",
+          "Bash(gh release*)",
+          "Bash(npm publish)",
           "Bash(npm publish *)",
+          "Bash(pnpm publish)",
           "Bash(pnpm publish *)",
+          "Bash(yarn publish)",
           "Bash(yarn publish *)",
           "Bash(rm -rf*)",
+          "Bash(ssh)",
+          "Bash(ssh *)",
           "Bash(sudo *)",
+          "Bash(systemctl *)",
+          "Bash(service *)",
+          "Bash(docker *)",
+          "Bash(kubectl *)",
+          "Bash(helm *)",
+          "Bash(journalctl *)",
+          "Bash(pm2 *)",
+          "Bash(supervisorctl *)",
+          "Bash(terraform *)",
+          "Bash(ansible *)",
+          "Bash(ansible-playbook *)",
+          "Bash(pg_dump *)",
+          "Bash(mysqldump *)",
+          "Bash(mongoexport *)",
+          "Bash(aws s3 cp *)",
+          "Bash(aws s3 sync *)",
+          "Bash(gsutil cp *)",
+          "Bash(gsutil rsync *)",
+          "Bash(rclone copy *)",
+          "Bash(rclone sync *)",
+          "Bash(mail *)",
+          "Bash(sendmail *)",
         ],
         ask: [
           "WebFetch",
           "WebSearch",
+          "Bash(git commit*)",
+          "Bash(npm install*)",
+          "Bash(npm i *)",
+          "Bash(npm add*)",
+          "Bash(pnpm install*)",
+          "Bash(pnpm add*)",
+          "Bash(yarn install*)",
+          "Bash(yarn add*)",
+          "Bash(bun install*)",
+          "Bash(bun add*)",
+          "Bash(pip install*)",
+          "Bash(pip3 install*)",
+          "Bash(uv add*)",
+          "Bash(poetry add*)",
           "Bash(rm *)",
           "Bash(curl *)",
           "Bash(wget *)",
           "Bash(scp *)",
           "Bash(rsync *)",
+          "Bash(sftp *)",
+          "Bash(ftp *)",
+          "Bash(chmod -R *)",
           "Bash(psql *)",
           "Bash(mysql *)",
+          "Bash(sqlite3 *)",
         ],
       },
       sandbox: {
@@ -1333,6 +1755,7 @@ prompt = str(payload.get('prompt') or '')
 permission_mode = str(payload.get('permission_mode') or '')
 serialized_input = json.dumps(tool_input, ensure_ascii=False)
 content = '\n'.join([command, serialized_input, prompt, permission_mode])
+tool_content = '\n'.join([tool, command, serialized_input, permission_mode])
 project_dir = os.path.realpath(os.environ.get('CLAUDE_PROJECT_DIR') or os.getcwd())
 
 def respond(decision, reason):
@@ -1408,6 +1831,11 @@ secret_value_patterns = [
     r'\b(api[_-]?key|secret|token|password|cookie)\s*[:=]\s*[^\s"\']{12,}',
 ]
 
+browser_interaction_patterns = [
+    r'\b(click|type|fill|press|submit|navigate|open)\b',
+    r'\b(login|signin|signup|checkout|pay|purchase|subscribe|delete|confirm|password|cookie)\b',
+]
+
 if hook_event_name in {'UserPromptSubmit', 'UserPromptExpansion'} and contains_any(secret_value_patterns, prompt):
     emit_prompt_block('疑似把 API key、private key、cookie、token 或密码粘贴进了 Claude Code；请改用安全凭证注入方式。')
     sys.exit(0)
@@ -1426,6 +1854,13 @@ if contains_any(protected_path_patterns, content):
 
 if contains_any(secret_value_patterns, content):
     deny('疑似工具输入中包含真实密钥、token、cookie 或密码；请先移除敏感值。')
+    sys.exit(0)
+
+if tool not in {'Read', 'Grep', 'Glob'} and contains_any(browser_interaction_patterns, tool_content):
+    if hook_event_name == 'PermissionRequest':
+        deny('浏览器登录、填表、购买、提交或删除类交互不能被持久放行，请人工逐次确认。')
+    else:
+        respond('ask', '检测到浏览器登录、填表、购买、提交或删除类交互，请人工确认后继续。')
     sys.exit(0)
 
 if tool in {'Edit', 'Write', 'MultiEdit'} and contains_any(protected_config_write_patterns, content):
@@ -1460,27 +1895,45 @@ if tool == 'Bash':
     compact = ' '.join(command.split())
     deny_patterns = [
         r'\bgit\s+push\b',
+        r'\bgh\s+(?:pr\s+(?:create|merge|edit|close)|release\b)',
+        r'\bgit\s+tag\b',
         r'\b(?:npm|pnpm|yarn)\s+publish\b',
         r'\brm\s+-rf\s+(?:/|~|\*|\.)',
         r'\bsudo\b',
+        r'\bssh\b',
+        r'\b(?:systemctl|service|docker|kubectl|helm|journalctl|pm2|supervisorctl|terraform|ansible-playbook|ansible)\b',
+        r'\b(?:rollout|rollback|restart|reboot|reload)\b',
         r'\b(?:drop|truncate)\s+database\b',
+        r'\b(?:delete\s+from|update\s+\w+\s+set|insert\s+into|alter\s+table)\b',
+        r'\b(?:pg_dump|mysqldump|mongoexport)\b',
+        r'\baws\s+s3\s+(?:cp|sync)\b',
+        r'\bgsutil\s+(?:cp|rsync)\b',
+        r'\brclone\s+(?:copy|sync)\b',
+        r'\b(?:mail|sendmail)\b',
         r'\bchmod\s+777\b',
         r'--dangerously-skip-permissions\b',
         r'--allow-dangerously-skip-permissions\b',
         r'--permission-mode\s+bypassPermissions\b',
     ]
     ask_patterns = [
+        r'\bgit\s+commit\b',
+        r'\b(?:npm\s+(?:install|i|add)|pnpm\s+(?:install|add)|yarn\s+(?:install|add)|bun\s+(?:install|add))\b',
+        r'\b(?:pip|pip3)\s+install\b',
+        r'\buv\s+add\b',
+        r'\bpoetry\s+add\b',
         r'\brm\b',
         r'\bcurl\b',
         r'\bwget\b',
+        r'\bssh\b',
         r'\bscp\b',
         r'\brsync\b',
+        r'\b(?:systemctl|service|docker|kubectl|helm|journalctl|pm2|supervisorctl|terraform|ansible-playbook|ansible)\b',
         r'\bchmod\s+-R\b',
         r'\bpsql\b',
         r'\bmysql\b',
         r'\bsqlite3\b',
-        r'\bpg_dump\b',
-        r'\bmysqldump\b',
+        r'\bsftp\b',
+        r'\bftp\b',
         r'\b(open|osascript)\b',
         r'\b(login|export|dump|upload|send|mail)\b',
     ]
@@ -1602,10 +2055,52 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["git", "commit"],
+    decision = "prompt",
+    justification = "Local commits should be reviewed by a human before Codex records them.",
+    match = ["git commit -m fix-login", "git commit --amend"],
+)
+
+prefix_rule(
+    pattern = ["git", "tag"],
+    decision = "forbidden",
+    justification = "Tags can become release markers and must be created manually.",
+    match = ["git tag v1.2.3"],
+)
+
+prefix_rule(
+    pattern = ["gh", ["pr", "release"], ["create", "merge", "edit", "close"]],
+    decision = "forbidden",
+    justification = "Remote PR and release actions must be reviewed and performed manually.",
+    match = ["gh pr create", "gh pr merge 12", "gh release create v1.2.3"],
+)
+
+prefix_rule(
     pattern = [["npm", "pnpm", "yarn"], "publish"],
     decision = "forbidden",
     justification = "Publishing packages is an external release action and must be manual.",
     match = ["npm publish", "pnpm publish --access public", "yarn publish"],
+)
+
+prefix_rule(
+    pattern = [["npm", "pnpm", "yarn", "bun"], ["install", "i", "add"]],
+    decision = "prompt",
+    justification = "Installing or adding dependencies changes the supply-chain surface and needs approval.",
+    match = ["npm install", "npm i lodash", "pnpm add zod", "yarn add zod", "bun add zod"],
+)
+
+prefix_rule(
+    pattern = [["pip", "pip3"], "install"],
+    decision = "prompt",
+    justification = "Installing Python dependencies changes the supply-chain surface and needs approval.",
+    match = ["pip install requests", "pip3 install pandas"],
+)
+
+prefix_rule(
+    pattern = [["uv", "poetry"], "add"],
+    decision = "prompt",
+    justification = "Adding Python dependencies changes the supply-chain surface and needs approval.",
+    match = ["uv add requests", "poetry add pandas"],
 )
 
 prefix_rule(
@@ -1616,6 +2111,31 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ssh"],
+    decision = "forbidden",
+    justification = "Server login must be performed by a human; provide minimal log excerpts to Codex instead.",
+    match = ["ssh prod-server", "ssh user@example.com"],
+)
+
+prefix_rule(
+    pattern = [["systemctl", "service", "docker", "kubectl", "helm", "journalctl", "pm2", "supervisorctl", "terraform", "ansible", "ansible-playbook"]],
+    decision = "forbidden",
+    justification = "Production server, container, Kubernetes, process-manager, and infrastructure commands must be manual.",
+    match = [
+        "systemctl restart app",
+        "service nginx reload",
+        "docker restart app",
+        "kubectl rollout undo deployment/app",
+        "helm rollback release 1",
+        "journalctl -u app",
+        "pm2 restart app",
+        "supervisorctl restart app",
+        "terraform apply",
+        "ansible-playbook deploy.yml",
+    ],
+)
+
+prefix_rule(
     pattern = ["rm", "-rf"],
     decision = "forbidden",
     justification = "Recursive deletion must be reviewed and performed manually.",
@@ -1623,17 +2143,31 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = [["curl", "wget", "scp", "rsync"]],
+    pattern = [["curl", "wget", "scp", "rsync", "sftp", "ftp"]],
     decision = "prompt",
     justification = "Network transfer commands require an explicit human approval.",
-    match = ["curl https://example.com", "wget https://example.com/file", "scp a b:c", "rsync -a out/ host:/tmp/out/"],
+    match = ["curl https://example.com", "wget https://example.com/file", "scp a b:c", "rsync -a out/ host:/tmp/out/", "sftp host", "ftp host"],
 )
 
 prefix_rule(
-    pattern = [["psql", "mysql", "sqlite3", "pg_dump", "mysqldump"]],
+    pattern = [["aws", "gsutil", "rclone", "mail", "sendmail"]],
+    decision = "forbidden",
+    justification = "Cloud uploads and email-style external sends must be manual after review.",
+    match = ["aws s3 cp out.csv s3://bucket/out.csv", "gsutil cp out.csv gs://bucket/out.csv", "rclone copy out remote:out", "mail user@example.com", "sendmail user@example.com"],
+)
+
+prefix_rule(
+    pattern = [["psql", "mysql", "sqlite3"]],
     decision = "prompt",
-    justification = "Database access or export requires an explicit human approval and data purpose.",
-    match = ["psql production", "pg_dump app"],
+    justification = "Database access requires explicit human approval and a stated data purpose.",
+    match = ["psql production", "mysql production", "sqlite3 app.db"],
+)
+
+prefix_rule(
+    pattern = [["pg_dump", "mysqldump", "mongoexport"]],
+    decision = "forbidden",
+    justification = "Full database exports are too broad for Codex; ask a human for a minimal, reviewed dataset.",
+    match = ["pg_dump app", "mysqldump app users", "mongoexport --db app --collection users"],
 )`;
 }
 
@@ -1659,6 +2193,7 @@ command = str(tool_input.get("command") or "")
 prompt = str(payload.get("prompt") or "")
 serialized_input = json.dumps(tool_input, ensure_ascii=False)
 content = "\n".join([tool, command, serialized_input, prompt, permission_mode])
+tool_content = "\n".join([tool, command, serialized_input, permission_mode])
 
 def emit_pretool_deny(reason):
     print(json.dumps({
@@ -1728,10 +2263,21 @@ secret_value_patterns = [
 
 dangerous_patterns = [
     r"\bgit\s+push\b",
+    r"\bgh\s+(?:pr\s+(?:create|merge|edit|close)|release\b)",
+    r"\bgit\s+tag\b",
     r"\b(?:npm|pnpm|yarn)\s+publish\b",
     r"\brm\s+-rf\s+(?:/|~|\*|\.)",
     r"\bsudo\b",
+    r"\bssh\b",
+    r"\b(?:systemctl|service|docker|kubectl|helm|journalctl|pm2|supervisorctl|terraform|ansible-playbook|ansible)\b",
+    r"\b(?:rollout|rollback|restart|reboot|reload)\b",
     r"\b(?:drop|truncate)\s+database\b",
+    r"\b(?:delete\s+from|update\s+\w+\s+set|insert\s+into|alter\s+table)\b",
+    r"\b(?:pg_dump|mysqldump|mongoexport)\b",
+    r"\baws\s+s3\s+(?:cp|sync)\b",
+    r"\bgsutil\s+(?:cp|rsync)\b",
+    r"\brclone\s+(?:copy|sync)\b",
+    r"\b(?:mail|sendmail)\b",
     r"\bchmod\s+777\b",
     r"--danger-full-access\b",
     r"--dangerously-bypass-approvals-and-sandbox\b",
@@ -1747,17 +2293,29 @@ side_effecting_mcp_patterns = [
     r"(?:^|[_\W])(send|mail|message|upload|delete|remove|destroy|create|update|post|put|patch|publish|share|invite)(?:$|[_\W])",
 ]
 
+browser_interaction_patterns = [
+    r"(?:^|[_\W])(click|type|fill|press|submit|navigate|open)(?:$|[_\W])",
+    r"\b(login|signin|signup|checkout|pay|purchase|subscribe|delete|confirm|password|cookie)\b",
+]
+
 caution_patterns = [
+    r"\bgit\s+commit\b",
+    r"\b(?:npm\s+(?:install|i|add)|pnpm\s+(?:install|add)|yarn\s+(?:install|add)|bun\s+(?:install|add))\b",
+    r"\b(?:pip|pip3)\s+install\b",
+    r"\buv\s+add\b",
+    r"\bpoetry\s+add\b",
     r"\brm\b",
     r"\bcurl\b",
     r"\bwget\b",
+    r"\bssh\b",
     r"\bscp\b",
     r"\brsync\b",
+    r"\b(?:systemctl|service|docker|kubectl|helm|journalctl|pm2|supervisorctl|terraform|ansible-playbook|ansible)\b",
     r"\bpsql\b",
     r"\bmysql\b",
     r"\bsqlite3\b",
-    r"\bpg_dump\b",
-    r"\bmysqldump\b",
+    r"\bsftp\b",
+    r"\bftp\b",
     r"\b(login|export|dump|upload|send|mail)\b",
 ]
 
@@ -1787,6 +2345,10 @@ if contains_any(dangerous_patterns, content):
 
 if tool.startswith("mcp__") and contains_any(side_effecting_mcp_patterns, content):
     deny("疑似 side-effecting MCP 工具调用已阻断：发送、上传、删除、发布或更新外部系统前必须人工处理。")
+    sys.exit(0)
+
+if tool.startswith("mcp__") and contains_any(browser_interaction_patterns, tool_content):
+    deny("疑似浏览器登录、填表、购买、提交或删除类交互已阻断，请人工逐次确认。")
     sys.exit(0)
 
 if event == "PreToolUse" and tool == "Bash" and contains_any(caution_patterns, command):
@@ -2483,6 +3045,5 @@ async function runAiAnalysis() {
 
 applyThemePreference(readThemePreference(), { persist: false });
 renderProviders();
-updateSampleButtonLabel();
-analyze();
+applyTaskSample(getRandomSampleIndex());
 setActiveResultTab("policy");

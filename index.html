@@ -19,7 +19,7 @@
 
         <div class="task-panel">
           <label for="taskInput">任务描述</label>
-          <textarea id="taskInput" spellcheck="false">帮我登录公司后台，导出本月客户数据，整理成表格，再发给销售群。</textarea>
+          <textarea id="taskInput" spellcheck="false" placeholder="描述准备交给 Claude Code 或 Codex 的任务"></textarea>
           <div class="actions">
             <button id="analyzeBtn" type="button">体检任务</button>
             <button class="ghost" id="sampleBtn" type="button">换个案例</button>
@@ -29,31 +29,31 @@
         <article class="handoff-panel">
           <div class="handoff-head">
             <span>入职流程</span>
-            <strong id="handoffMode">本地规则</strong>
+            <strong id="handoffMode">待体检</strong>
           </div>
           <div class="handoff-steps" aria-label="Claude Code 和 Codex 入职流程">
             <button class="handoff-step" type="button" data-open-tab="permissions">
               <span>01</span>
               <strong>发工牌</strong>
-              <small id="handoffPermission">3 项权限</small>
+              <small id="handoffPermission">待生成</small>
             </button>
             <button class="handoff-step" type="button" data-open-tab="approvals">
               <span>02</span>
               <strong>设红线</strong>
-              <small id="handoffApproval">3 个确认点</small>
+              <small id="handoffApproval">待生成</small>
             </button>
             <button class="handoff-step" type="button" data-open-tab="sandbox">
               <span>03</span>
               <strong>进沙箱</strong>
-              <small id="handoffSandbox">Strict</small>
+              <small id="handoffSandbox">待生成</small>
             </button>
           </div>
         </article>
 
-        <article class="risk-card" id="riskCard">
+        <article class="risk-card pending" id="riskCard">
           <p class="label">风险提醒</p>
-          <div class="risk-score" id="riskScore">高风险</div>
-          <p id="riskReason">涉及账号、客户数据、文件导出和外部发送，必须先设置沙箱、审批和审计边界。</p>
+          <div class="risk-score" id="riskScore">待体检</div>
+          <p id="riskReason">随机案例已准备好，点击「体检任务」后生成风险判断和边界建议。</p>
         </article>
       </section>
 
@@ -74,13 +74,13 @@
         <div class="summary-strip wide" aria-label="体检摘要">
           <button class="summary-tile" type="button" data-open-tab="permissions">
             <span>工牌权限</span>
-            <strong id="permissionCount">4 项</strong>
-            <small id="permissionPreview">临时账号权限，只允许访问任务相关页面</small>
+            <strong id="permissionCount">待生成</strong>
+            <small id="permissionPreview">点击体检后生成权限边界</small>
           </button>
           <button class="summary-tile" type="button" data-open-tab="approvals">
             <span>必须问人</span>
-            <strong id="approvalCount">3 项</strong>
-            <small id="approvalPreview">任何登录、授权、读取 cookie 或 token 的动作</small>
+            <strong id="approvalCount">待生成</strong>
+            <small id="approvalPreview">点击体检后生成确认点</small>
           </button>
         </div>
 
@@ -88,7 +88,7 @@
           <div class="workbench-head">
             <div>
               <span>结果工作台</span>
-              <strong id="policyBadge">本地版</strong>
+              <strong id="policyBadge">待体检</strong>
             </div>
             <div class="install-actions" aria-label="复制项目命令">
               <div class="install-action">
@@ -114,31 +114,31 @@
 
           <div class="result-tabs" role="tablist" aria-label="体检结果分类">
             <button class="result-tab" type="button" role="tab" aria-selected="true" data-tab="policy">工作制度</button>
-            <button class="result-tab" type="button" role="tab" aria-selected="false" data-tab="sandbox">
-              沙箱 <strong id="sandboxLevel">Strict</strong>
-            </button>
-            <button class="result-tab" type="button" role="tab" aria-selected="false" data-tab="hooks">
-              Hooks <strong id="hookCount">4 个</strong>
-            </button>
             <button class="result-tab" type="button" role="tab" aria-selected="false" data-tab="permissions">权限</button>
             <button class="result-tab" type="button" role="tab" aria-selected="false" data-tab="approvals">审批</button>
+            <button class="result-tab" type="button" role="tab" aria-selected="false" data-tab="sandbox">
+              沙箱 <strong id="sandboxLevel">待生成</strong>
+            </button>
+            <button class="result-tab" type="button" role="tab" aria-selected="false" data-tab="hooks">
+              Hooks <strong id="hookCount">待生成</strong>
+            </button>
           </div>
 
           <div class="result-panels">
             <section class="result-panel" data-panel="policy">
               <pre id="brief"></pre>
             </section>
-            <section class="result-panel" data-panel="sandbox" hidden>
-              <ul id="sandboxRules"></ul>
-            </section>
-            <section class="result-panel" data-panel="hooks" hidden>
-              <ul id="hooks"></ul>
-            </section>
             <section class="result-panel" data-panel="permissions" hidden>
               <ul id="permissions"></ul>
             </section>
             <section class="result-panel" data-panel="approvals" hidden>
               <ul id="approvals"></ul>
+            </section>
+            <section class="result-panel" data-panel="sandbox" hidden>
+              <ul id="sandboxRules"></ul>
+            </section>
+            <section class="result-panel" data-panel="hooks" hidden>
+              <ul id="hooks"></ul>
             </section>
           </div>
         </article>
