@@ -28,6 +28,7 @@ const modelMenuBtn = document.querySelector("#modelMenuBtn");
 const modelHint = document.querySelector("#modelHint");
 const fetchModelsBtn = document.querySelector("#fetchModelsBtn");
 const testModelBtn = document.querySelector("#testModelBtn");
+const testStatus = document.querySelector("#testStatus");
 const aiAnalyzeBtn = document.querySelector("#aiAnalyzeBtn");
 const copyPromptBtn = document.querySelector("#copyPromptBtn");
 const settingsBtn = document.querySelector("#settingsBtn");
@@ -279,6 +280,7 @@ function applyProvider(providerId) {
   providerSelect.value = provider.id;
   baseUrlInput.value = provider.baseUrl;
   modelInput.value = provider.model;
+  resetTestFeedback();
   updateProviderTrigger();
   updateProviderBadges();
   clearModelOptions();
@@ -434,12 +436,14 @@ providerMenu.addEventListener("keydown", (event) => {
   }
 });
 baseUrlInput.addEventListener("input", () => {
+  resetTestFeedback();
   if (providerSelect.value !== "custom") {
     updateProviderBadges(" · 已改");
   }
   scheduleModelFetch();
 });
 apiKeyInput.addEventListener("input", () => {
+  resetTestFeedback();
   updateProviderBadges();
   if (!apiKeyInput.value.trim()) {
     apiStatus.textContent = "未使用模型 API，当前由本地关键词策略完成体检。";
@@ -451,6 +455,7 @@ modelInput.addEventListener("focus", () => {
   if (availableModelIds.length) showModelMenu();
 });
 modelInput.addEventListener("input", () => {
+  resetTestFeedback();
   updateProviderBadges();
   if (availableModelIds.length) showModelMenu({ filter: true });
 });
@@ -708,6 +713,7 @@ function hideModelMenu() {
 function selectModel(id) {
   modelInput.value = id;
   hideModelMenu();
+  resetTestFeedback();
   updateProviderBadges();
   modelInput.focus();
 }
@@ -728,10 +734,26 @@ function renderModelOptions(modelIds, options = {}) {
 
   if (modelIds.length && (!modelInput.value.trim() || !modelIds.includes(modelInput.value.trim()))) {
     modelInput.value = modelIds[0];
+    resetTestFeedback();
   }
   modelHint.textContent = `已获取 ${modelIds.length} 个模型。点箭头可查看列表，输入关键词可过滤。`;
   updateProviderBadges();
   if (options.open) showModelMenu();
+}
+
+function setTestFeedback(state, message, buttonText = "检测可用性") {
+  testStatus.dataset.state = state;
+  testStatus.textContent = message;
+  testModelBtn.dataset.state = state;
+  testModelBtn.textContent = buttonText;
+}
+
+function resetTestFeedback() {
+  testModelBtn.classList.remove("loading");
+  testModelBtn.dataset.state = "";
+  testModelBtn.textContent = "检测可用性";
+  testStatus.dataset.state = "idle";
+  testStatus.textContent = "检测结果会显示在这里。";
 }
 
 function scheduleModelFetch() {
@@ -798,23 +820,29 @@ async function testModelAvailability() {
   const model = modelInput.value.trim();
 
   if (!apiKey) {
-    apiStatus.textContent = "先填 API Key，再检测模型是否可用。";
+    const message = "先填 API Key，再检测模型是否可用。";
+    setTestFeedback("error", message, "缺 API Key");
+    apiStatus.textContent = message;
     apiKeyInput.focus();
     return;
   }
   if (!baseUrl) {
-    apiStatus.textContent = "先填 Base URL，再检测模型是否可用。";
+    const message = "先填 Base URL，再检测模型是否可用。";
+    setTestFeedback("error", message, "缺 Base URL");
+    apiStatus.textContent = message;
     baseUrlInput.focus();
     return;
   }
   if (!model) {
-    apiStatus.textContent = "先填模型名，或先获取模型列表。";
+    const message = "先填模型名，或先获取模型列表。";
+    setTestFeedback("error", message, "缺模型名");
+    apiStatus.textContent = message;
     modelInput.focus();
     return;
   }
 
   testModelBtn.classList.add("loading");
-  testModelBtn.textContent = "检测中...";
+  setTestFeedback("loading", `正在检测 ${compactProviderName(getProvider().name)} · ${model}...`, "检测中...");
   apiStatus.textContent = `正在检测 ${model} 是否可用...`;
 
   try {
@@ -841,15 +869,18 @@ async function testModelAvailability() {
     }
 
     const output = extractOutputText(data);
-    apiStatus.textContent = output
+    const message = output
       ? `检测通过：${compactProviderName(getProvider().name)} · ${model} 可用。`
       : `检测通过：接口可用，但返回内容为空。`;
+    setTestFeedback("success", message, "检测通过");
+    apiStatus.textContent = message;
     updateProviderBadges();
   } catch (error) {
-    apiStatus.textContent = `检测失败：${error.message}。可以检查 Key、Base URL 或手动换一个模型名。`;
+    const message = `检测失败：${error.message}。可以检查 Key、Base URL 或手动换一个模型名。`;
+    setTestFeedback("error", message, "检测失败");
+    apiStatus.textContent = message;
   } finally {
     testModelBtn.classList.remove("loading");
-    testModelBtn.textContent = "检测可用性";
   }
 }
 

@@ -542,6 +542,41 @@ button.loading {
   background: var(--amber);
 }
 
+button[data-state="success"] {
+  color: #fff;
+  background: var(--green);
+}
+
+button[data-state="error"] {
+  color: #fff;
+  background: var(--red);
+}
+
+.test-status {
+  margin: 12px 0 0;
+  border: 2px solid color-mix(in srgb, var(--line) 28%, transparent);
+  padding: 10px 12px;
+  color: var(--muted);
+  background: var(--pre);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.test-status[data-state="loading"] {
+  color: var(--line);
+  background: color-mix(in srgb, var(--amber) 20%, var(--pre));
+}
+
+.test-status[data-state="success"] {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 14%, var(--pre));
+}
+
+.test-status[data-state="error"] {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, var(--pre));
+}
+
 .api-note {
   font-size: 13px;
 }
