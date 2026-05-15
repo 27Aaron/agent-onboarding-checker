@@ -39,54 +39,63 @@ let modelFetchTimer;
 const providers = [
   {
     id: "openai",
+    group: "常规模型 API",
     name: "OpenAI 官方",
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-5.4",
   },
   {
     id: "zhipu-cn",
+    group: "常规模型 API",
     name: "智谱 GLM（国内）",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     model: "glm-4.7",
   },
   {
     id: "zhipu-global",
+    group: "常规模型 API",
     name: "智谱 GLM（海外）",
     baseUrl: "https://api.z.ai/api/paas/v4",
     model: "glm-4.7",
   },
   {
     id: "kimi",
+    group: "常规模型 API",
     name: "Kimi（国内）",
     baseUrl: "https://api.moonshot.cn/v1",
     model: "kimi-k2-0905-preview",
   },
   {
     id: "moonshot-global",
+    group: "常规模型 API",
     name: "Moonshot（海外）",
     baseUrl: "https://api.moonshot.ai/v1",
     model: "kimi-k2-0905-preview",
   },
   {
     id: "minimax-cn",
+    group: "常规模型 API",
     name: "MiniMax（国内）",
     baseUrl: "https://api.minimaxi.com/v1",
     model: "MiniMax-M2.1",
   },
   {
     id: "minimax-global",
+    group: "常规模型 API",
     name: "MiniMax（海外）",
     baseUrl: "https://api.minimax.io/v1",
     model: "MiniMax-M2.1",
   },
   {
     id: "volcengine-ark",
+    group: "常规模型 API",
     name: "火山引擎方舟（豆包）",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     model: "doubao-seed-1-6-250615",
   },
   {
     id: "mimo",
+    group: "常规模型 API",
     name: "小米 MiMo",
     baseUrl: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2-pro",
@@ -94,18 +103,43 @@ const providers = [
   },
   {
     id: "dashscope",
+    group: "常规模型 API",
     name: "阿里云百炼（通义）",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen-plus",
   },
   {
     id: "openrouter",
+    group: "常规模型 API",
     name: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
     model: "openai/gpt-5.4",
   },
   {
+    id: "zhipu-coding-cn",
+    group: "Coding Plan",
+    name: "智谱 Coding Plan（国内）",
+    baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    model: "",
+  },
+  {
+    id: "zhipu-coding-global",
+    group: "Coding Plan",
+    name: "智谱 Coding Plan（海外）",
+    baseUrl: "https://z.ai/api/coding/paas/v4",
+    model: "",
+  },
+  {
+    id: "mimo-coding",
+    group: "Coding Plan",
+    name: "小米 MiMo Coding Plan",
+    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
+    model: "",
+    auth: "both",
+  },
+  {
     id: "custom",
+    group: "自定义",
     name: "自定义",
     baseUrl: "",
     model: "",
@@ -208,11 +242,22 @@ function applyTheme(theme) {
 
 function renderProviders() {
   providerSelect.innerHTML = "";
+  const groups = new Map();
   providers.forEach((provider) => {
     const option = document.createElement("option");
     option.value = provider.id;
     option.textContent = provider.name;
-    providerSelect.appendChild(option);
+    if (provider.group === "自定义") {
+      providerSelect.appendChild(option);
+      return;
+    }
+    if (!groups.has(provider.group)) {
+      const group = document.createElement("optgroup");
+      group.label = provider.group;
+      groups.set(provider.group, group);
+      providerSelect.appendChild(group);
+    }
+    groups.get(provider.group).appendChild(option);
   });
   applyProvider("openai");
 }
