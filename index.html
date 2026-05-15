@@ -130,13 +130,31 @@
               API Key
               <input id="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off" />
             </label>
-            <label>
+            <label class="model-field">
               模型
-              <input id="modelInput" type="text" list="modelList" value="gpt-5.4" autocomplete="off" />
-              <datalist id="modelList"></datalist>
+              <div class="model-combo">
+                <input
+                  id="modelInput"
+                  type="text"
+                  value="gpt-5.4"
+                  autocomplete="off"
+                  role="combobox"
+                  aria-controls="modelMenu"
+                  aria-expanded="false"
+                />
+                <button
+                  class="ghost model-menu-button"
+                  id="modelMenuBtn"
+                  type="button"
+                  aria-label="展开模型列表"
+                  aria-controls="modelMenu"
+                  aria-expanded="false"
+                ></button>
+                <div class="model-menu" id="modelMenu" role="listbox" hidden></div>
+              </div>
             </label>
           </div>
-          <p class="model-hint" id="modelHint">填完 API Key 后会自动获取模型列表；也可以直接手动填写模型名。</p>
+          <p class="model-hint" id="modelHint">填完 API Key 后会自动获取模型列表；点箭头可展开，或者直接手动填写模型名。</p>
           <label for="promptInput">提示词</label>
           <textarea id="promptInput" class="prompt-box" spellcheck="false"></textarea>
           <div class="actions">

@@ -20,7 +20,8 @@ const providerBadge = document.querySelector("#providerBadge");
 const settingsProviderBadge = document.querySelector("#settingsProviderBadge");
 const apiKeyInput = document.querySelector("#apiKeyInput");
 const modelInput = document.querySelector("#modelInput");
-const modelList = document.querySelector("#modelList");
+const modelMenu = document.querySelector("#modelMenu");
+const modelMenuBtn = document.querySelector("#modelMenuBtn");
 const modelHint = document.querySelector("#modelHint");
 const fetchModelsBtn = document.querySelector("#fetchModelsBtn");
 const testModelBtn = document.querySelector("#testModelBtn");
@@ -35,6 +36,7 @@ const apiStatus = document.querySelector("#apiStatus");
 const aiReport = document.querySelector("#aiReport");
 const aiBadge = document.querySelector("#aiBadge");
 let modelFetchTimer;
+let availableModelIds = [];
 
 const providers = [
   {
@@ -227,6 +229,7 @@ function openSettings(focusNode) {
 }
 
 function closeSettings() {
+  hideModelMenu();
   settingsOverlay.hidden = true;
   document.body.classList.remove("settings-open");
   settingsBtn.focus();
@@ -284,8 +287,10 @@ function applyProvider(providerId) {
   scheduleModelFetch();
 }
 
-function clearModelOptions(message = "填完 API Key 后会自动获取模型列表；也可以直接手动填写模型名。") {
-  modelList.innerHTML = "";
+function clearModelOptions(message = "填完 API Key 后会自动获取模型列表；点箭头可展开，或者直接手动填写模型名。") {
+  availableModelIds = [];
+  renderModelMenu();
+  hideModelMenu();
   modelHint.textContent = message;
 }
 
@@ -403,7 +408,47 @@ apiKeyInput.addEventListener("input", () => {
   }
   scheduleModelFetch();
 });
-modelInput.addEventListener("input", () => updateProviderBadges());
+modelInput.addEventListener("focus", () => {
+  if (availableModelIds.length) showModelMenu();
+});
+modelInput.addEventListener("input", () => {
+  updateProviderBadges();
+  if (availableModelIds.length) showModelMenu({ filter: true });
+});
+modelInput.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    showModelMenu();
+    focusModelOption(1);
+  }
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    hideModelMenu();
+  }
+});
+modelMenuBtn.addEventListener("click", () => {
+  if (modelMenu.hidden) {
+    showModelMenu();
+    modelInput.focus();
+    return;
+  }
+  hideModelMenu();
+});
+modelMenu.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    focusModelOption(1);
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    focusModelOption(-1);
+  }
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    hideModelMenu();
+    modelInput.focus();
+  }
+});
 fetchModelsBtn.addEventListener("click", fetchAvailableModels);
 testModelBtn.addEventListener("click", testModelAvailability);
 settingsBtn.addEventListener("click", () => openSettings());
@@ -413,7 +458,11 @@ settingsOverlay.addEventListener("click", (event) => {
   if (event.target === settingsOverlay) closeSettings();
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !modelMenu.hidden) return;
   if (event.key === "Escape" && !settingsOverlay.hidden) closeSettings();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".model-field")) hideModelMenu();
 });
 themeToggleBtn.addEventListener("click", () => {
   applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
@@ -486,20 +535,91 @@ function parseModelIds(data) {
   );
 }
 
-function renderModelOptions(modelIds) {
-  modelList.innerHTML = "";
+function renderModelMenu(options = {}) {
+  const shouldFilter = options.filter === true;
+  const query = modelInput.value.trim().toLowerCase();
+  const visibleModels = shouldFilter && query
+    ? availableModelIds.filter((id) => id.toLowerCase().includes(query))
+    : availableModelIds;
 
-  modelIds.forEach((id) => {
-    const dataOption = document.createElement("option");
-    dataOption.value = id;
-    modelList.appendChild(dataOption);
+  modelMenu.innerHTML = "";
+
+  if (!availableModelIds.length) {
+    const empty = document.createElement("div");
+    empty.className = "model-empty";
+    empty.textContent = "先获取模型列表，或直接手动填写模型名。";
+    modelMenu.appendChild(empty);
+    return;
+  }
+
+  if (!visibleModels.length) {
+    const empty = document.createElement("div");
+    empty.className = "model-empty";
+    empty.textContent = "没有匹配模型，当前输入仍会作为模型名使用。";
+    modelMenu.appendChild(empty);
+    return;
+  }
+
+  visibleModels.slice(0, 80).forEach((id) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "model-option";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(id === modelInput.value.trim()));
+    option.textContent = id;
+    option.addEventListener("mousedown", (event) => event.preventDefault());
+    option.addEventListener("click", () => selectModel(id));
+    modelMenu.appendChild(option);
   });
+
+  if (visibleModels.length > 80) {
+    const more = document.createElement("div");
+    more.className = "model-empty";
+    more.textContent = `已显示前 80 个，继续输入可缩小范围。`;
+    modelMenu.appendChild(more);
+  }
+}
+
+function showModelMenu(options = {}) {
+  renderModelMenu(options);
+  modelMenu.hidden = false;
+  modelInput.setAttribute("aria-expanded", "true");
+  modelMenuBtn.setAttribute("aria-expanded", "true");
+}
+
+function hideModelMenu() {
+  modelMenu.hidden = true;
+  modelInput.setAttribute("aria-expanded", "false");
+  modelMenuBtn.setAttribute("aria-expanded", "false");
+}
+
+function selectModel(id) {
+  modelInput.value = id;
+  hideModelMenu();
+  updateProviderBadges();
+  modelInput.focus();
+}
+
+function focusModelOption(direction) {
+  const options = [...modelMenu.querySelectorAll(".model-option")];
+  if (!options.length) return;
+  const currentIndex = options.indexOf(document.activeElement);
+  const nextIndex = currentIndex === -1
+    ? direction > 0 ? 0 : options.length - 1
+    : (currentIndex + direction + options.length) % options.length;
+  options[nextIndex].focus();
+}
+
+function renderModelOptions(modelIds, options = {}) {
+  availableModelIds = modelIds;
+  renderModelMenu();
 
   if (modelIds.length && (!modelInput.value.trim() || !modelIds.includes(modelInput.value.trim()))) {
     modelInput.value = modelIds[0];
   }
-  modelHint.textContent = `已获取 ${modelIds.length} 个模型。可以直接使用当前模型，也可以点输入框从建议里选。`;
+  modelHint.textContent = `已获取 ${modelIds.length} 个模型。点箭头可查看列表，输入关键词可过滤。`;
   updateProviderBadges();
+  if (options.open) showModelMenu();
 }
 
 function scheduleModelFetch() {
@@ -548,7 +668,7 @@ async function fetchAvailableModels(options = {}) {
       throw new Error("接口返回了结果，但没有识别到模型 id。");
     }
 
-    renderModelOptions(modelIds);
+    renderModelOptions(modelIds, { open: !isAuto });
     baseUrlInput.value = baseUrl;
     apiStatus.textContent = `已获取 ${modelIds.length} 个模型。选一个，或继续手动填写模型名。`;
   } catch (error) {

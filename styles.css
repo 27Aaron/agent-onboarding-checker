@@ -336,6 +336,102 @@ select {
   font-size: 13px;
 }
 
+.model-field {
+  position: relative;
+}
+
+.model-combo {
+  position: relative;
+  margin-top: 8px;
+}
+
+.model-combo input {
+  margin-top: 0;
+  padding-right: 54px;
+}
+
+.model-menu-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-width: 2px;
+  border-left-width: 2px;
+  color: var(--line);
+  background: var(--card);
+  box-shadow: none;
+}
+
+.model-menu-button:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.model-menu-button::before {
+  position: absolute;
+  top: 17px;
+  left: 15px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  transform: rotate(45deg);
+  content: "";
+}
+
+.model-menu-button[aria-expanded="true"]::before {
+  top: 21px;
+  transform: rotate(225deg);
+}
+
+.model-menu {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  max-height: 230px;
+  overflow: auto;
+  border: 2px solid var(--line);
+  background: var(--card);
+  padding: 6px;
+  box-shadow: 6px 6px 0 var(--soft-shadow);
+}
+
+.model-menu[hidden] {
+  display: none;
+}
+
+.model-option {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  padding: 0 10px;
+  color: var(--ink);
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  font: 13px "SFMono-Regular", Consolas, monospace;
+}
+
+.model-option:hover,
+.model-option:focus,
+.model-option[aria-selected="true"] {
+  transform: none;
+  background: var(--pre);
+  box-shadow: none;
+}
+
+.model-empty {
+  padding: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .prompt-box {
   min-height: 220px;
   font: 13px/1.65 "SFMono-Regular", Consolas, monospace;
