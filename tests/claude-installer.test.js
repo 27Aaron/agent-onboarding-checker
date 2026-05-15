@@ -40,6 +40,12 @@ function extractTaskSamples() {
   return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
 }
 
+function extractSystemPromptSource() {
+  const match = appSource.match(/const SYSTEM_PROMPT = `([\s\S]*?)`;/);
+  assert.ok(match, "SYSTEM_PROMPT should exist");
+  return match[1];
+}
+
 function extractCuratedSampleResultsSource() {
   const start = appSource.indexOf("const curatedSampleResults = new Map");
   assert.notEqual(start, -1, "curatedSampleResults should exist");
@@ -99,13 +105,40 @@ test("default UI does not show generated counts before inspection", () => {
 });
 
 test("AI prompt keeps generated guidance aligned to the current task", () => {
-  assert.match(appSource, /你是“AI 入职体检器”的安全策略生成器/);
-  assert.match(appSource, /所有内容都必须围绕用户当前任务/);
-  assert.match(appSource, /如果任务没有客户数据，就不要写客户数据/);
-  assert.match(appSource, /permissions 写“能做什么”，approvals 写“做到哪一步必须停下来问人”/);
-  assert.match(appSource, /Claude Code ask \/ Codex PermissionRequest \/ deny \/ 记录 \/ additionalContext/);
-  assert.match(appSource, /Codex 的 PreToolUse 不要声称可以可靠 ask/);
-  assert.match(appSource, /danger-full-access \+ never/);
+  const promptSource = extractSystemPromptSource();
+
+  assert.match(promptSource, /你是“AI 入职体检器”的安全策略生成器/);
+  assert.match(promptSource, /所有内容都必须围绕用户当前任务/);
+  assert.match(promptSource, /如果任务没有客户数据，就不要写客户数据/);
+  assert.match(promptSource, /permissions 写“能做什么”，approvals 写“做到哪一步必须停下来问人”/);
+  assert.match(promptSource, /Claude Code ask \/ Codex PermissionRequest \/ deny \/ 记录 \/ additionalContext/);
+  assert.match(promptSource, /Codex 的 PreToolUse 不要声称可以可靠 ask/);
+  assert.match(promptSource, /danger-full-access \+ never/);
+  assert.match(promptSource, /代码仓库任务/);
+  assert.match(
+    promptSource,
+    new RegExp(escapeRegex("git commit 走确认；git push、git tag、gh pr create/merge/edit/close、gh release、publish 必须 deny")),
+  );
+  assert.match(promptSource, /网页和浏览器任务/);
+  assert.match(promptSource, /只读数据库任务/);
+  assert.match(promptSource, /云服务器和生产日志任务/);
+  assert.match(promptSource, /CI 和发布任务/);
+  assert.match(promptSource, /curl、wget、scp、rsync、aws s3、gsutil、rclone、mail、sendmail/);
+  assert.match(promptSource, /风险关键词镜像/);
+  assert.match(promptSource, /登录\/账号\/后台\/cookie\/密码\/token -> 临时账号权限/);
+  assert.match(promptSource, /删除\/清空\/覆盖\/重置\/rm\/drop -> 破坏性操作必须进沙箱/);
+  assert.match(promptSource, /Claude Code 配置镜像/);
+  assert.match(promptSource, /disableBypassPermissionsMode/);
+  assert.match(promptSource, /allowedHttpHookUrls = 空/);
+  assert.match(promptSource, /Codex 配置镜像/);
+  assert.match(promptSource, /web_search = disabled/);
+  assert.match(promptSource, /history.persistence = none/);
+  assert.match(promptSource, /memories、plugin_hooks、skill_mcp_dependency_install、codex_git_commit 都关闭/);
+  assert.match(promptSource, /命令决策镜像/);
+  assert.match(promptSource, /git commit、依赖 install\/add、rm、curl\/wget、数据库连接命令 -> ask\/prompt/);
+  assert.match(promptSource, /敏感内容镜像/);
+  assert.match(promptSource, /-----BEGIN .*PRIVATE KEY-----/);
+  assert.match(promptSource, /sk-、ghp_\/gho_\/ghu_\/ghs_\/ghr_、xoxb-\/xoxp-\/xoxa-、claude-/);
 });
 
 test("sample tasks are five curated cases and randomize without auto-running checks", () => {

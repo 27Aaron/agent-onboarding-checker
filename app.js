@@ -226,6 +226,68 @@ Claude Code / Codex 准确性规则：
 - Codex 的 PreToolUse 不要声称可以可靠 ask；它适合 deny 或 additionalContext。需要人工确认时依赖 approval_policy = on-request 或 PermissionRequest。
 - 不要声称自动脱敏、30 天日志留存、快照回滚、外部发送审批已经实现；除非说明需要另接业务系统。
 
+场景细化规则：
+- 代码仓库任务：允许读写当前仓库内相关源码和测试；禁止读取 .env、secrets、.ssh、.aws/credentials、npmrc、pypirc、netrc、kubeconfig、docker/gcloud 凭证；依赖安装、修改认证/CI/发布配置或扩大改动范围前要确认；git commit 走确认；git push、git tag、gh pr create/merge/edit/close、gh release、publish 必须 deny。
+- 网页和浏览器任务：WebFetch、curl、wget、浏览器访问新增域名要确认；截图和公开页面整理可以放行；登录、填表、购买、订阅、提交、删除、下载私有文件或读取 cookie/token 必须暂停；Codex MCP 浏览器工具命中发送、上传、删除、更新、确认类动作时直接 deny。
+- 只读数据库任务：允许限定时间窗口和字段的 SELECT；psql、mysql、sqlite3、连接串、pg_dump、mysqldump、mongoexport 需要确认；delete/update/insert/alter/drop/truncate 必须 deny；导出 CSV 只能写入项目目录并最小化字段，包含可识别用户数据时必须人工审核。
+- 云服务器和生产日志任务：ssh、scp、rsync、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible 都属于高风险；查看日志也要限定服务名和时间窗口；restart、rollback、rollout、deploy、apply、delete 必须暂停或 deny；回滚方案只能生成文档，不自动执行。
+- CI 和发布任务：允许本地测试、lint、typecheck 和最小 CI 配置修复；读取 CI secrets、deploy key、token 必须 deny；npm/pnpm/yarn/bun/pip/uv/poetry install/add、修改 workflow 权限或发布 job 要确认；远端 PR、release、tag、push、publish 必须人工处理。
+- 外传和网络命令：curl、wget、scp、rsync、aws s3、gsutil、rclone、mail、sendmail、sftp、ftp 都可能外传数据，默认走人工确认；如果任务没有明确外发目标，不要授予外发权限。
+
+风险关键词镜像：
+- 登录/账号/后台/cookie/密码/token -> 临时账号权限；任何登录、授权、读取 cookie 或 token 的动作必须人工确认；风险权重偏高。
+- 客户/用户/订单/隐私/数据/表格 -> 只读数据权限，默认隐藏敏感字段；导出、复制或汇总个人信息必须人工确认；风险权重偏高。
+- 发送/发给/群/邮件/发布/提交/push -> 外部发送权限默认关闭；向外部系统发送消息、邮件、文件或提交代码必须人工确认；风险权重高。
+- 删除/清空/覆盖/重置/rm/drop -> 破坏性操作必须进沙箱；删除、覆盖、重置、清空等不可逆动作必须人工确认或 deny；风险权重最高。
+- 改代码/修 bug/运行测试/PR/代码/仓库 -> 仓库写权限限制在工作分支；提交 PR、修改测试、触碰配置和密钥文件需要确认；风险权重中等。
+- 浏览器/网页/点击/表单/下载/截图/竞品/官网/价格页 -> 浏览器沙箱和域名白名单；关键按钮、登录、支付、提交、删除要确认；风险权重中等。
+- 数据库/SQL/CSV/名单/流失 -> 只读数据库查询和脱敏导出；扩大查询、导出、处理可识别用户数据要确认；风险权重高。
+- 云服务器/服务器/线上/生产/日志/回滚/部署 -> 生产环境只读观测；回滚、重启、部署、线上配置修改必须暂停或 deny；风险权重最高。
+- 风险等级参考：累计权重大于等于 7 为高风险，4 到 6 为中风险，否则低风险；但只要出现生产、云服务器、破坏性删除、数据库导出或外部发送，就按更高风险处理。
+
+默认制度镜像：
+- 默认使用沙箱环境，不直接触碰真实生产数据。
+- 文件写入限制在任务目录、当前仓库或临时分支。
+- 网络访问采用白名单或审批流程，新增域名必须确认。
+- 交付前必须说明改了什么、为什么改、影响哪些文件或数据。
+- 交付前必须给出可复现的测试或检查步骤。
+- 不发送、不删除、不提交任何未经确认的结果。
+
+Claude Code 配置镜像：
+- defaultMode = default，disableBypassPermissionsMode = disable。
+- sandbox.enabled = true，failIfUnavailable = true，autoAllowBashIfSandboxed = false，allowUnsandboxedCommands = false。
+- filesystem.allowRead 只放当前项目，allowWrite 只放当前项目和 /tmp；denyRead/denyWrite 覆盖 .env、secrets、.aws/credentials、.ssh、.git、.claude、.codex、.agents。
+- network.allowedDomains = 空，deniedDomains = 空，allowLocalBinding = false，allowUnixSockets = 空。
+- skipWebFetchPreflight = false，allowedHttpHookUrls = 空，httpHookAllowedEnvVars = 空。
+- hooks 覆盖 PreToolUse、PermissionRequest、UserPromptSubmit、UserPromptExpansion；PreToolUse/PermissionRequest matcher 覆盖 Bash、Read、Edit、Write、MultiEdit、WebFetch、WebSearch、Glob、Grep。
+- Claude Code deny：Read/Edit/Write/MultiEdit 命中 .env、.env.*、secrets、.aws/credentials、.ssh、id_rsa、id_ed25519、用户级 .aws、gcloud、kube、docker、.npmrc、.pypirc、.netrc、.claude、.codex、.agents、.git。
+- Claude Code deny：git push、git tag、gh pr create/merge/edit/close、gh release、npm/pnpm/yarn publish、rm -rf、ssh、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible、ansible-playbook、pg_dump、mysqldump、mongoexport、aws s3 cp/sync、gsutil cp/rsync、rclone copy/sync、mail、sendmail。
+- Claude Code ask：WebFetch、WebSearch、git commit、npm/pnpm/yarn/bun/pip/pip3/uv/poetry install/add、rm、curl、wget、scp、rsync、sftp、ftp、chmod -R、psql、mysql、sqlite3。
+- Claude Code hook：bypassPermissions、dangerouslyDisableSandbox、--dangerously-skip-permissions、--allow-dangerously-skip-permissions、--permission-mode bypassPermissions 必须 deny；项目外路径访问 ask，持久授权项目外路径 deny；WebFetch/WebSearch 逐次 ask，PermissionRequest 持久放行外部 URL 或 WebSearch 时 deny。
+- Claude Code 浏览器动作：click/type/fill/press/submit/navigate/open 同时命中 login/signin/signup/checkout/pay/purchase/subscribe/delete/confirm/password/cookie 时，PreToolUse ask，PermissionRequest deny。
+
+Codex 配置镜像：
+- approval_policy = on-request，approvals_reviewer = user，sandbox_mode = workspace-write，default_permissions = agent_onboarding_guarded。
+- web_search = disabled，allow_login_shell = false，history.persistence = none，otel.exporter = none，otel.log_user_prompt = false。
+- hooks = true；memories、plugin_hooks、skill_mcp_dependency_install、codex_git_commit 都关闭。
+- shell_environment_policy 只继承 core，并排除 *KEY*、*SECRET*、*TOKEN*、*COOKIE*、*PASSWORD*、*AUTH*。
+- apps._default 启用但 destructive_enabled = false，open_world_enabled = false，default_tools_approval_mode = prompt。
+- filesystem.glob_scan_max_depth = 3；项目根可写，AGENTS.md、.codex、.claude、.agents、.git 只读；.env、.env.*、secrets、.aws/credentials、.ssh、id_rsa、id_ed25519 为 none。
+- network.enabled = false，allow_local_binding = false。
+- Codex hooks 覆盖 PreToolUse、PermissionRequest、UserPromptSubmit；matcher 覆盖 Bash、apply_patch、Edit、Write、mcp__.*；项目本地 config、hooks 和 rules 只有 trust 后才会加载，必须提醒用户用 /status、/permissions、/hooks、/debug-config 复核。
+
+命令决策镜像：
+- deny/forbidden：git push、git tag、gh pr create/merge/edit/close、gh release、npm/pnpm/yarn publish、sudo、ssh、rm -rf、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible、ansible-playbook、rollout、rollback、restart、reboot、reload、drop/truncate database、delete from、update set、insert into、alter table、pg_dump、mysqldump、mongoexport、aws s3 cp/sync、gsutil cp/rsync、rclone copy/sync、mail、sendmail、chmod 777、danger-full-access、dangerously-bypass-approvals-and-sandbox、yolo、ask-for-approval never、approval_policy = never、default_permissions = :danger-no-sandbox。
+- ask/prompt/additionalContext：git commit、依赖 install/add、rm、curl/wget、数据库连接命令 -> ask/prompt；psql、mysql、sqlite3 要求人类说明数据目的；scp、rsync、sftp、ftp 要求人类确认传输对象和方向。
+- Codex PreToolUse 不使用 ask；需要提醒时只能 additionalContext，需要阻断时 deny，需要人确认时依赖 PermissionRequest、approval_policy = on-request 或 prefix_rule prompt。
+- Codex side-effecting MCP：工具名或输入命中 send、mail、message、upload、delete、remove、destroy、create、update、post、put、patch、publish、share、invite 时 deny。
+- Codex 浏览器 MCP：click/type/fill/press/submit/navigate/open 命中 login/signin/signup/checkout/pay/purchase/subscribe/delete/confirm/password/cookie 时 deny。
+
+敏感内容镜像：
+- 敏感路径：.env、.env.*、secrets、.aws/credentials、.ssh、id_rsa、id_ed25519、用户级 .aws、gcloud、kube、docker、.npmrc、.pypirc、.netrc、.claude/settings、.claude/hooks、.codex/config、.codex/hooks、.codex/rules、.agents、.git。
+- 敏感值：-----BEGIN .*PRIVATE KEY-----、sk-、ghp_/gho_/ghu_/ghs_/ghr_、xoxb-/xoxp-/xoxa-、claude-、api_key、secret、token、password、cookie。UserPromptSubmit 必须阻断用户误粘贴密钥；工具输入里出现这些值也必须 deny。
+- 不要让 hook 本身变成外传通道；HTTP hook 出口默认关闭，环境变量出口默认关闭。
+
 安全边界：
 - 不要建议把真实密码、cookie、token、API key、SSH key、客户隐私直接交给 Claude Code 或 Codex。
 - 不要鼓励绕过审批、关闭沙箱、隐藏日志、删除审计记录、使用 danger-full-access + never。
