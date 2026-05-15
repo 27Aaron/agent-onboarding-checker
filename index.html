@@ -7,19 +7,6 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="ai-dock">
-      <div class="dock-copy">
-        <span>AI 增强</span>
-        <strong id="providerBadge">本地策略</strong>
-        <p id="apiStatus">未使用模型 API，当前由本地关键词策略完成体检。</p>
-      </div>
-      <div class="dock-actions">
-        <button id="aiAnalyzeBtn" type="button">AI 深度体检</button>
-        <button class="ghost" id="settingsBtn" type="button">模型设置</button>
-        <button class="ghost" id="themeToggleBtn" type="button" aria-pressed="false">深色</button>
-      </div>
-    </div>
-
     <main class="shell">
       <section class="workspace">
         <div class="intro">
@@ -45,6 +32,19 @@
           <p class="label">Risk Level</p>
           <div class="risk-score" id="riskScore">高风险</div>
           <p id="riskReason">涉及账号、客户数据、文件导出和外部发送，Agent 不能直接裸跑。</p>
+        </article>
+
+        <article class="ai-dock wide">
+          <div class="dock-copy">
+            <span>AI 增强</span>
+            <strong id="providerBadge">本地策略</strong>
+            <p id="apiStatus">未使用模型 API，当前由本地关键词策略完成体检。</p>
+          </div>
+          <div class="dock-actions">
+            <button id="aiAnalyzeBtn" type="button">AI 深度体检</button>
+            <button class="ghost" id="settingsBtn" type="button">模型设置</button>
+            <button class="ghost" id="themeToggleBtn" type="button" aria-pressed="false">深色</button>
+          </div>
         </article>
 
         <article class="card">
