@@ -41,6 +41,7 @@ const apiStatus = document.querySelector("#apiStatus");
 const aiReport = document.querySelector("#aiReport");
 const aiBadge = document.querySelector("#aiBadge");
 let modelFetchTimer;
+let modelTestTimer;
 let availableModelIds = [];
 
 const providers = [
@@ -282,7 +283,7 @@ function applyProvider(providerId) {
   providerSelect.value = provider.id;
   baseUrlInput.value = provider.baseUrl;
   modelInput.value = provider.model;
-  resetTestFeedback();
+  resetTestFeedback({ autoDetect: true });
   updateProviderTrigger();
   updateProviderBadges();
   clearModelOptions();
@@ -438,14 +439,14 @@ providerMenu.addEventListener("keydown", (event) => {
   }
 });
 baseUrlInput.addEventListener("input", () => {
-  resetTestFeedback();
+  resetTestFeedback({ autoDetect: true });
   if (providerSelect.value !== "custom") {
     updateProviderBadges(" · 已改");
   }
   scheduleModelFetch();
 });
 apiKeyInput.addEventListener("input", () => {
-  resetTestFeedback();
+  resetTestFeedback({ autoDetect: true });
   updateProviderBadges();
   if (!apiKeyInput.value.trim()) {
     apiStatus.textContent = "未使用模型 API，当前由本地关键词策略完成体检。";
@@ -457,7 +458,7 @@ modelInput.addEventListener("focus", () => {
   if (availableModelIds.length) showModelMenu();
 });
 modelInput.addEventListener("input", () => {
-  resetTestFeedback();
+  resetTestFeedback({ autoDetect: true });
   updateProviderBadges();
   if (availableModelIds.length) showModelMenu({ filter: true });
 });
@@ -496,7 +497,7 @@ modelMenu.addEventListener("keydown", (event) => {
   }
 });
 fetchModelsBtn.addEventListener("click", fetchAvailableModels);
-testModelBtn.addEventListener("click", testModelAvailability);
+testModelBtn.addEventListener("click", () => testModelAvailability());
 settingsBtn.addEventListener("click", () => openSettings());
 closeSettingsBtn.addEventListener("click", closeSettings);
 saveSettingsBtn.addEventListener("click", closeSettings);
@@ -715,7 +716,7 @@ function hideModelMenu() {
 function selectModel(id) {
   modelInput.value = id;
   hideModelMenu();
-  resetTestFeedback();
+  resetTestFeedback({ autoDetect: true });
   updateProviderBadges();
   modelInput.focus();
 }
@@ -736,7 +737,7 @@ function renderModelOptions(modelIds, options = {}) {
 
   if (modelIds.length && (!modelInput.value.trim() || !modelIds.includes(modelInput.value.trim()))) {
     modelInput.value = modelIds[0];
-    resetTestFeedback();
+    resetTestFeedback({ autoDetect: true });
   }
   modelHint.textContent = `已获取 ${modelIds.length} 个模型。点箭头可查看列表，输入关键词可过滤。`;
   updateProviderBadges();
@@ -750,12 +751,39 @@ function setTestFeedback(state, message, buttonText = "检测可用性") {
   testModelBtn.textContent = buttonText;
 }
 
-function resetTestFeedback() {
+function getModelConfig() {
+  return {
+    apiKey: apiKeyInput.value.trim(),
+    baseUrl: normalizeBaseUrl(baseUrlInput.value),
+    model: modelInput.value.trim(),
+  };
+}
+
+function resetTestFeedback(options = {}) {
+  window.clearTimeout(modelTestTimer);
   testModelBtn.classList.remove("loading");
   testModelBtn.dataset.state = "";
   testModelBtn.textContent = "检测可用性";
-  testStatus.dataset.state = "idle";
-  testStatus.textContent = "检测结果会显示在这里。";
+  const { apiKey, baseUrl, model } = getModelConfig();
+
+  if (!apiKey) {
+    testStatus.dataset.state = "idle";
+    testStatus.textContent = "填写 API Key 后，会自动检测当前模型是否可用。";
+    return;
+  }
+  if (!baseUrl) {
+    testStatus.dataset.state = "idle";
+    testStatus.textContent = "已填写 API Key；请补上 Base URL，随后会自动检测。";
+    return;
+  }
+  if (!model) {
+    testStatus.dataset.state = "idle";
+    testStatus.textContent = "已填写 API Key；请选择或填写模型名，随后会自动检测。";
+    return;
+  }
+
+  setTestFeedback("queued", `配置已就绪，将自动检测 ${compactProviderName(getProvider().name)} · ${model}。`, "等待检测");
+  if (options.autoDetect) scheduleModelTest();
 }
 
 function scheduleModelFetch() {
@@ -764,6 +792,13 @@ function scheduleModelFetch() {
   const baseUrl = normalizeBaseUrl(baseUrlInput.value);
   if (!apiKey || !baseUrl) return;
   modelFetchTimer = window.setTimeout(() => fetchAvailableModels({ auto: true }), 700);
+}
+
+function scheduleModelTest() {
+  window.clearTimeout(modelTestTimer);
+  const { apiKey, baseUrl, model } = getModelConfig();
+  if (!apiKey || !baseUrl || !model) return;
+  modelTestTimer = window.setTimeout(() => testModelAvailability({ auto: true }), 1200);
 }
 
 async function fetchAvailableModels(options = {}) {
@@ -816,30 +851,30 @@ async function fetchAvailableModels(options = {}) {
   }
 }
 
-async function testModelAvailability() {
-  const apiKey = apiKeyInput.value.trim();
-  const baseUrl = normalizeBaseUrl(baseUrlInput.value);
-  const model = modelInput.value.trim();
+async function testModelAvailability(options = {}) {
+  window.clearTimeout(modelTestTimer);
+  const isAuto = options.auto === true;
+  const { apiKey, baseUrl, model } = getModelConfig();
 
   if (!apiKey) {
     const message = "先填 API Key，再检测模型是否可用。";
     setTestFeedback("error", message, "缺 API Key");
     apiStatus.textContent = message;
-    apiKeyInput.focus();
+    if (!isAuto) apiKeyInput.focus();
     return;
   }
   if (!baseUrl) {
     const message = "先填 Base URL，再检测模型是否可用。";
     setTestFeedback("error", message, "缺 Base URL");
     apiStatus.textContent = message;
-    baseUrlInput.focus();
+    if (!isAuto) baseUrlInput.focus();
     return;
   }
   if (!model) {
     const message = "先填模型名，或先获取模型列表。";
     setTestFeedback("error", message, "缺模型名");
     apiStatus.textContent = message;
-    modelInput.focus();
+    if (!isAuto) modelInput.focus();
     return;
   }
 

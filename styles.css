@@ -550,6 +550,11 @@ button.loading {
   background: var(--amber);
 }
 
+button[data-state="queued"] {
+  color: var(--line);
+  background: color-mix(in srgb, var(--amber) 24%, var(--card));
+}
+
 button[data-state="success"] {
   color: #fff;
   background: var(--green);
@@ -573,6 +578,11 @@ button[data-state="error"] {
 .test-status[data-state="loading"] {
   color: var(--line);
   background: color-mix(in srgb, var(--amber) 20%, var(--pre));
+}
+
+.test-status[data-state="queued"] {
+  color: var(--line);
+  background: color-mix(in srgb, var(--amber) 14%, var(--pre));
 }
 
 .test-status[data-state="success"] {
