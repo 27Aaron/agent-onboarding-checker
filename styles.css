@@ -44,7 +44,11 @@ body[data-theme="dark"] {
   --card: #181c20;
   --field: #101316;
   --pre: #101316;
-  --soft-shadow: #050607;
+  --soft-shadow: #000000;
+  --panel-shadow: 8px 8px 0 #000000;
+  --float-shadow: 6px 6px 0 #000000;
+  --button-shadow: 4px 4px 0 #000000;
+  --button-shadow-hover: 5px 5px 0 #000000;
   --grid-line: rgba(242, 238, 229, 0.06);
   --card-shadow: rgba(0, 0, 0, 0.42);
   --overlay: rgba(0, 0, 0, 0.64);
