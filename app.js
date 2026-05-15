@@ -352,6 +352,48 @@ function buildAuthHeaders(apiKey, provider = getProvider()) {
   return headers;
 }
 
+function isBrowserRequestBlocked(error) {
+  return error instanceof TypeError && /failed to fetch|load failed|networkerror/i.test(error.message || "");
+}
+
+function formatRequestError(error, baseUrl = "") {
+  if (isBrowserRequestBlocked(error)) {
+    const target = baseUrl ? `（${baseUrl}）` : "";
+    return `浏览器没有拿到接口响应${target}，通常是服务商不允许静态网页直连，或被 CORS、网络策略、证书拦截。`;
+  }
+  return error.message || "未知错误";
+}
+
+function sentenceEnd(text) {
+  return /[。！？.!?]$/.test(text) ? text : `${text}。`;
+}
+
+function buildAiRequestErrorReport(error, baseUrl) {
+  if (isBrowserRequestBlocked(error)) {
+    return [
+      "AI 请求没有成功。",
+      "",
+      "浏览器没有拿到接口响应，这通常不是模型拒绝，也不一定是 Key 写错。",
+      "",
+      "静态 H5 直接请求模型接口时，部分服务商会在浏览器层拦截跨域请求。Coding Plan、部分国内厂商接口、企业网关或浏览器插件都可能触发这种情况。",
+      "",
+      `当前 Base URL：${baseUrl}`,
+      "",
+      "可以先换一个允许浏览器直连的 OpenAI-compatible 入口；如果要部署成正式工具，更稳的做法是用自己的后端或 Worker 转发请求。页面已保留本地规则体检结果。",
+    ].join("\n");
+  }
+
+  return ["AI 请求没有成功。", "", formatRequestError(error, baseUrl), "", "页面已保留本地规则体检结果。"].join("\n");
+}
+
+async function readJsonResponse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
+
 function uniq(items) {
   return [...new Set(items)];
 }
@@ -866,7 +908,7 @@ async function fetchAvailableModels(options = {}) {
     const response = await fetch(`${baseUrl}/models`, {
       headers: buildAuthHeaders(apiKey),
     });
-    const data = await response.json();
+    const data = await readJsonResponse(response);
     if (!response.ok) {
       throw new Error(data.error?.message || data.message || `请求失败 ${response.status}`);
     }
@@ -880,8 +922,9 @@ async function fetchAvailableModels(options = {}) {
     baseUrlInput.value = baseUrl;
     apiStatus.textContent = `已获取 ${modelIds.length} 个模型。选一个，或继续手动填写模型名。`;
   } catch (error) {
+    const detail = sentenceEnd(formatRequestError(error, baseUrl));
     clearModelOptions("获取失败，继续手动填写模型名");
-    apiStatus.textContent = `模型列表获取失败：${error.message}。可以直接手动填写模型名。`;
+    apiStatus.textContent = `模型列表获取失败：${detail}可以直接手动填写模型名。`;
   } finally {
     fetchModelsBtn.classList.remove("loading");
     fetchModelsBtn.textContent = "获取模型列表";
@@ -937,7 +980,7 @@ async function testModelAvailability(options = {}) {
       }),
     });
 
-    const data = await response.json();
+    const data = await readJsonResponse(response);
     if (!response.ok) {
       throw new Error(data.error?.message || `请求失败 ${response.status}`);
     }
@@ -950,7 +993,8 @@ async function testModelAvailability(options = {}) {
     apiStatus.textContent = message;
     updateProviderBadges();
   } catch (error) {
-    const message = `检测失败：${error.message}。可以检查 Key、Base URL 或手动换一个模型名。`;
+    const detail = sentenceEnd(formatRequestError(error, baseUrl));
+    const message = `检测失败：${detail}可以检查 Key、Base URL，或手动换一个模型名。`;
     setTestFeedback("error", message, "检测失败");
     apiStatus.textContent = message;
   } finally {
@@ -1028,7 +1072,7 @@ async function runAiAnalysis() {
       }),
     });
 
-    const data = await response.json();
+    const data = await readJsonResponse(response);
     if (!response.ok) {
       throw new Error(data.error?.message || `请求失败 ${response.status}`);
     }
@@ -1037,15 +1081,11 @@ async function runAiAnalysis() {
     aiBadge.textContent = "AI Report";
     apiStatus.textContent = "AI 深度体检完成。";
   } catch (error) {
-    aiReport.textContent = [
-      "AI 请求没有成功。",
-      "",
-      error.message,
-      "",
-      "如果是浏览器跨域、鉴权格式或密钥安全限制，正式做法是加一个后端代理，把 API Key 放在服务端。",
-    ].join("\n");
+    aiReport.textContent = buildAiRequestErrorReport(error, baseUrl);
     aiBadge.textContent = "Error";
-    apiStatus.textContent = "AI 请求失败，已保留本地规则报告。";
+    apiStatus.textContent = isBrowserRequestBlocked(error)
+      ? "浏览器直连模型接口失败，已保留本地规则报告。"
+      : "AI 请求失败，已保留本地规则报告。";
   } finally {
     analyzeBtn.classList.remove("loading");
     updatePrimaryButtonLabel();
