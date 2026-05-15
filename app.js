@@ -997,13 +997,100 @@ function applyCuratedInspectionResult(result) {
   });
 }
 
-function applyAiEnhancement(output) {
+function buildKeywordInspectionResult(text) {
+  const normalizedText = String(text || "").trim();
+  const matched = rules.filter((rule) => rule.keys.some((key) => normalizedText.includes(key)));
+  const total = matched.reduce((sum, rule) => sum + rule.weight, 0);
+  const level = total >= 7 ? "高风险" : total >= 4 ? "中风险" : "低风险";
+  const reason =
+    level === "高风险"
+      ? "这个任务已经接近真实员工权限，必须先设沙箱、审批和审计记录。"
+      : level === "中风险"
+        ? "这个任务可以交给 Claude Code / Codex，但需要明确边界，至少保留关键动作审批。"
+        : "这个任务适合 Claude Code / Codex 自主处理，保留日志和只读边界即可。";
+  const permissionItems = uniq(matched.map((rule) => rule.permission));
+  const approvalItems = uniq(matched.map((rule) => rule.approval));
+  const permissionsFallback = ["只读资料权限", "记录完整操作日志"];
+  const approvalsFallback = ["访问新网站或要求额外权限时停下来问人"];
+
+  return {
+    level,
+    reason,
+    permissions: permissionItems.length ? permissionItems : permissionsFallback,
+    approvals: approvalItems.length ? approvalItems : approvalsFallback,
+    sandboxRules: buildSandboxRules(level, normalizedText),
+    hooks: buildHooks(normalizedText),
+    claudeNotes: buildClaudeCodeNotes(level, normalizedText),
+    codexNotes: buildCodexNotes(level, normalizedText),
+  };
+}
+
+function applyKeywordInspectionResult(result) {
+  const task = input.value.trim() || "未填写任务";
+
+  applyRiskResult(result.level, result.reason);
+  renderList(permissions, result.permissions);
+  renderList(approvals, result.approvals);
+  permissionCount.textContent = `${result.permissions.length} 项`;
+  approvalCount.textContent = `${result.approvals.length} 项`;
+  updateSummaryPreviews(result.permissions, result.approvals);
+
+  renderList(claudeNotes, result.claudeNotes);
+  renderList(codexNotes, result.codexNotes);
+  renderList(sandboxRules, result.sandboxRules);
+  renderList(hooks, result.hooks);
+  sandboxLevel.textContent = sandboxModeForRisk(result.level);
+  hookCount.textContent = `${result.hooks.length} 个`;
+  policyBadge.textContent = "本地版";
+  updateHandoffSummary("本地规则", result.permissions.length, result.approvals.length, sandboxLevel.textContent);
+
+  brief.textContent = formatPolicyBrief({
+    title: "Claude Code / Codex 入职说明",
+    task,
+    level: result.level,
+    workPolicy: BASE_WORK_POLICY,
+    approvals: result.approvals,
+    checklist: DELIVERY_CHECKLIST,
+  });
+}
+
+function setAiAnalysisPendingState(baseUrl) {
+  analyzeBtn.classList.add("loading");
+  analyzeBtn.textContent = "体检中...";
+  riskCard.className = "risk-card pending";
+  riskScore.textContent = "AI 体检中";
+  riskReason.textContent = "正在等待模型返回体检结果。";
+  renderList(permissions, ["AI 正在生成权限边界"]);
+  renderList(approvals, ["AI 正在生成必须人工确认的动作"]);
+  renderList(sandboxRules, ["AI 正在生成沙箱、文件和网络边界"]);
+  renderList(hooks, ["AI 正在生成可落地的 hook 门卫"]);
+  renderList(claudeNotes, ["AI 正在生成 Claude Code 生效边界说明"]);
+  renderList(codexNotes, ["AI 正在生成 Codex 生效边界说明"]);
+  permissionCount.textContent = "生成中";
+  approvalCount.textContent = "生成中";
+  permissionPreview.textContent = "等待 AI 返回权限边界";
+  approvalPreview.textContent = "等待 AI 返回确认点";
+  policyBadge.textContent = "AI 生成中";
+  sandboxLevel.textContent = "生成中";
+  hookCount.textContent = "生成中";
+  updateHandoffSummary("AI 生成中", null, null, "生成中");
+  brief.textContent = [
+    "AI 正在体检当前任务。",
+    "",
+    `任务：${input.value.trim() || "未填写任务"}`,
+    "",
+    "模型返回后会写入工作制度、权限边界、人工确认点、沙箱规则和 hooks。",
+  ].join("\n");
+  apiStatus.textContent = `正在请求 ${baseUrl}/chat/completions...`;
+}
+
+function applyAiEnhancement(output, fallbackResult = buildKeywordInspectionResult(input.value.trim())) {
   const enhancement = parseAiEnhancement(output);
   const task = input.value.trim() || "未填写任务";
   const level = enhancement.riskLevel || riskScore.textContent;
   const reason = enhancement.riskReason || riskReason.textContent;
-  const finalPermissions = enhancement.permissions.length ? enhancement.permissions : getPanelItems(permissions);
-  const finalApprovals = enhancement.approvals.length ? enhancement.approvals : getPanelItems(approvals);
+  const finalPermissions = enhancement.permissions.length ? enhancement.permissions : fallbackResult.permissions;
+  const finalApprovals = enhancement.approvals.length ? enhancement.approvals : fallbackResult.approvals;
   const hasStructuredPolicy = enhancement.workPolicy.length > 0;
   const hasStructuredContent =
     hasStructuredPolicy ||
@@ -1038,12 +1125,16 @@ function applyAiEnhancement(output) {
     renderList(sandboxRules, enhancement.sandboxRules);
     sandboxLevel.textContent = `AI · ${sandboxModeForRisk(level)}`;
   } else {
+    renderList(sandboxRules, fallbackResult.sandboxRules);
     sandboxLevel.textContent = `${sandboxModeForRisk(level)} · 本地`;
   }
 
   if (enhancement.hooks.length) {
     renderList(hooks, enhancement.hooks);
     hookCount.textContent = `${enhancement.hooks.length} 个`;
+  } else {
+    renderList(hooks, fallbackResult.hooks);
+    hookCount.textContent = `${fallbackResult.hooks.length} 个`;
   }
 
   updateHandoffSummary("AI 写入", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
@@ -1062,52 +1153,8 @@ function analyze() {
     return;
   }
 
-  const matched = rules.filter((rule) => rule.keys.some((key) => text.includes(key)));
-  const total = matched.reduce((sum, rule) => sum + rule.weight, 0);
-  const level = total >= 7 ? "高风险" : total >= 4 ? "中风险" : "低风险";
-  const reason =
-    level === "高风险"
-      ? "这个任务已经接近真实员工权限，必须先设沙箱、审批和审计记录。"
-      : level === "中风险"
-        ? "这个任务可以交给 Claude Code / Codex，但需要明确边界，至少保留关键动作审批。"
-        : "这个任务适合 Claude Code / Codex 自主处理，保留日志和只读边界即可。";
-
-  const permissionItems = uniq(matched.map((rule) => rule.permission));
-  const approvalItems = uniq(matched.map((rule) => rule.approval));
-  const fallbackPermissions = ["只读资料权限", "记录完整操作日志"];
-  const fallbackApprovals = ["访问新网站或要求额外权限时停下来问人"];
-
-  applyRiskResult(level, reason);
-
-  const finalPermissions = permissionItems.length ? permissionItems : fallbackPermissions;
-  const finalApprovals = approvalItems.length ? approvalItems : fallbackApprovals;
-  renderList(permissions, finalPermissions);
-  renderList(approvals, finalApprovals);
-  permissionCount.textContent = `${finalPermissions.length} 项`;
-  approvalCount.textContent = `${finalApprovals.length} 项`;
-  updateSummaryPreviews(finalPermissions, finalApprovals);
-
-  const sandboxItems = buildSandboxRules(level, text);
-  const hookItems = buildHooks(text);
-  const claudeItems = buildClaudeCodeNotes(level, text);
-  const codexItems = buildCodexNotes(level, text);
-  renderList(claudeNotes, claudeItems);
-  renderList(codexNotes, codexItems);
-  renderList(sandboxRules, sandboxItems);
-  renderList(hooks, hookItems);
-  sandboxLevel.textContent = sandboxModeForRisk(level);
-  hookCount.textContent = `${hookItems.length} 个`;
-  policyBadge.textContent = "本地版";
-  updateHandoffSummary("本地规则", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
-
-  brief.textContent = formatPolicyBrief({
-    title: "Claude Code / Codex 入职说明",
-    task: text || "未填写任务",
-    level,
-    workPolicy: BASE_WORK_POLICY,
-    approvals: finalApprovals,
-    checklist: DELIVERY_CHECKLIST,
-  });
+  const result = buildKeywordInspectionResult(text);
+  applyKeywordInspectionResult(result);
 
   if (!apiKeyInput.value.trim()) {
     apiStatus.textContent = "未使用模型 API，当前由本地关键词策略完成体检。";
@@ -2993,13 +3040,8 @@ async function runAiAnalysis() {
     return;
   }
 
-  analyze();
-  analyzeBtn.classList.add("loading");
-  analyzeBtn.textContent = "体检中...";
-  policyBadge.textContent = "AI 生成中";
-  sandboxLevel.textContent = "生成中";
-  hookCount.textContent = "生成中";
-  apiStatus.textContent = `正在请求 ${baseUrl}/chat/completions...`;
+  const fallbackResult = buildKeywordInspectionResult(input.value.trim());
+  setAiAnalysisPendingState(baseUrl);
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -3029,13 +3071,13 @@ async function runAiAnalysis() {
     }
 
     const output = extractOutputText(data);
-    const hasStructuredContent = applyAiEnhancement(output);
+    const hasStructuredContent = applyAiEnhancement(output, fallbackResult);
     setActiveResultTab("policy");
     apiStatus.textContent = hasStructuredContent
       ? "AI 建议已写入工作制度、沙箱配置和 Hooks。"
       : "AI 返回的不是结构化 JSON，已写入工作制度补充判断。";
   } catch (error) {
-    analyze();
+    applyKeywordInspectionResult(fallbackResult);
     apiStatus.textContent = buildAiRequestFailureMessage(error, baseUrl);
   } finally {
     analyzeBtn.classList.remove("loading");

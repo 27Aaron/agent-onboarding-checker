@@ -163,6 +163,18 @@ test("curated samples have prompt-shaped local inspection results", () => {
   assert.match(appSource, /已按精选案例生成本地体检结果/);
 });
 
+test("AI inspection waits for model output instead of rendering curated samples first", () => {
+  const source = extractFunctionSource("runAiAnalysis");
+
+  assert.match(source, /const fallbackResult = buildKeywordInspectionResult\(input\.value\.trim\(\)\)/);
+  assert.match(source, /setAiAnalysisPendingState\(baseUrl\)/);
+  assert.match(source, /applyAiEnhancement\(output, fallbackResult\)/);
+  assert.match(source, /applyKeywordInspectionResult\(fallbackResult\)/);
+  assert.doesNotMatch(source, /analyze\(\)/);
+  assert.doesNotMatch(source, /getCuratedSampleResult/);
+  assert.match(appSource, /function buildKeywordInspectionResult/);
+});
+
 test("curated samples stay aligned with current generated guard coverage", () => {
   const curatedSource = extractCuratedSampleResultsSource();
   for (const phrase of [
