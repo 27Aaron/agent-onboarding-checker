@@ -21,8 +21,9 @@ const settingsProviderBadge = document.querySelector("#settingsProviderBadge");
 const apiKeyInput = document.querySelector("#apiKeyInput");
 const modelInput = document.querySelector("#modelInput");
 const modelList = document.querySelector("#modelList");
-const modelSelect = document.querySelector("#modelSelect");
+const modelHint = document.querySelector("#modelHint");
 const fetchModelsBtn = document.querySelector("#fetchModelsBtn");
+const testModelBtn = document.querySelector("#testModelBtn");
 const aiAnalyzeBtn = document.querySelector("#aiAnalyzeBtn");
 const copyPromptBtn = document.querySelector("#copyPromptBtn");
 const settingsBtn = document.querySelector("#settingsBtn");
@@ -33,6 +34,7 @@ const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const apiStatus = document.querySelector("#apiStatus");
 const aiReport = document.querySelector("#aiReport");
 const aiBadge = document.querySelector("#aiBadge");
+let modelFetchTimer;
 
 const providers = [
   {
@@ -179,7 +181,8 @@ function updateProviderBadges(suffix = "") {
   const provider = getProvider();
   const providerName = compactProviderName(provider.name);
   const model = modelInput.value.trim() || "未选模型";
-  providerBadge.textContent = `${providerName} · ${model}${suffix}`;
+  const isConfigured = Boolean(apiKeyInput.value.trim() && baseUrlInput.value.trim() && modelInput.value.trim());
+  providerBadge.textContent = isConfigured ? `${providerName} · ${model}${suffix}` : "本地策略";
   settingsProviderBadge.textContent = providerName;
 }
 
@@ -226,20 +229,19 @@ function applyProvider(providerId) {
   updateProviderBadges();
   clearModelOptions();
   if (provider.id === "custom") {
-    apiStatus.textContent = "自定义模式：填 Base URL、API Key 和模型名；如果服务支持 /models，可以点获取模型列表。";
+    apiStatus.textContent = "当前仍使用本地策略。自定义模式下填 Base URL、API Key 和模型名后可接入模型。";
     baseUrlInput.focus();
     return;
   }
-  apiStatus.textContent = "预设 Base URL 只是常用入口，真实可用模型以 /models 返回为准；拉不到就手动填模型名。";
+  apiStatus.textContent = apiKeyInput.value.trim()
+    ? "已选择服务商，正在准备模型列表。"
+    : "未使用模型 API，当前由本地关键词策略完成体检。";
+  scheduleModelFetch();
 }
 
-function clearModelOptions(message = "先获取模型列表，或直接手动填写模型名") {
+function clearModelOptions(message = "填完 API Key 后会自动获取模型列表；也可以直接手动填写模型名。") {
   modelList.innerHTML = "";
-  modelSelect.innerHTML = "";
-  const option = document.createElement("option");
-  option.value = "";
-  option.textContent = message;
-  modelSelect.appendChild(option);
+  modelHint.textContent = message;
 }
 
 function normalizeBaseUrl(value) {
@@ -346,15 +348,19 @@ baseUrlInput.addEventListener("input", () => {
   if (providerSelect.value !== "custom") {
     updateProviderBadges(" · 已改");
   }
+  scheduleModelFetch();
+});
+apiKeyInput.addEventListener("input", () => {
+  updateProviderBadges();
+  if (!apiKeyInput.value.trim()) {
+    apiStatus.textContent = "未使用模型 API，当前由本地关键词策略完成体检。";
+    return;
+  }
+  scheduleModelFetch();
 });
 modelInput.addEventListener("input", () => updateProviderBadges());
-modelSelect.addEventListener("change", () => {
-  if (modelSelect.value) {
-    modelInput.value = modelSelect.value;
-    updateProviderBadges();
-  }
-});
 fetchModelsBtn.addEventListener("click", fetchAvailableModels);
+testModelBtn.addEventListener("click", testModelAvailability);
 settingsBtn.addEventListener("click", () => openSettings());
 closeSettingsBtn.addEventListener("click", closeSettings);
 saveSettingsBtn.addEventListener("click", closeSettings);
@@ -437,45 +443,50 @@ function parseModelIds(data) {
 
 function renderModelOptions(modelIds) {
   modelList.innerHTML = "";
-  modelSelect.innerHTML = "";
 
   modelIds.forEach((id) => {
     const dataOption = document.createElement("option");
     dataOption.value = id;
     modelList.appendChild(dataOption);
-
-    const option = document.createElement("option");
-    option.value = id;
-    option.textContent = id;
-    modelSelect.appendChild(option);
   });
 
-  if (!modelInput.value.trim() && modelIds.length) {
+  if (modelIds.length && (!modelInput.value.trim() || !modelIds.includes(modelInput.value.trim()))) {
     modelInput.value = modelIds[0];
   }
-  if (modelInput.value.trim()) {
-    modelSelect.value = modelInput.value.trim();
-  }
+  modelHint.textContent = `已获取 ${modelIds.length} 个模型。可以直接使用当前模型，也可以点输入框从建议里选。`;
   updateProviderBadges();
 }
 
-async function fetchAvailableModels() {
+function scheduleModelFetch() {
+  window.clearTimeout(modelFetchTimer);
+  const apiKey = apiKeyInput.value.trim();
+  const baseUrl = normalizeBaseUrl(baseUrlInput.value);
+  if (!apiKey || !baseUrl) return;
+  modelFetchTimer = window.setTimeout(() => fetchAvailableModels({ auto: true }), 700);
+}
+
+async function fetchAvailableModels(options = {}) {
+  const isAuto = options.auto === true;
   const apiKey = apiKeyInput.value.trim();
   const baseUrl = normalizeBaseUrl(baseUrlInput.value);
 
   if (!baseUrl) {
-    apiStatus.textContent = "先填 Base URL，通常长得像 https://example.com/v1。";
-    baseUrlInput.focus();
+    if (!isAuto) {
+      apiStatus.textContent = "先填 Base URL，通常长得像 https://example.com/v1。";
+      baseUrlInput.focus();
+    }
     return;
   }
   if (!apiKey) {
-    apiStatus.textContent = "先填 API Key 再拉模型列表；有些平台的 /models 必须鉴权。";
-    apiKeyInput.focus();
+    if (!isAuto) {
+      apiStatus.textContent = "先填 API Key 再拉模型列表；有些平台的 /models 必须鉴权。";
+      apiKeyInput.focus();
+    }
     return;
   }
 
   fetchModelsBtn.classList.add("loading");
-  fetchModelsBtn.textContent = "获取中...";
+  fetchModelsBtn.textContent = isAuto ? "自动获取中..." : "获取中...";
   apiStatus.textContent = `正在请求 ${baseUrl}/models...`;
 
   try {
@@ -501,6 +512,67 @@ async function fetchAvailableModels() {
   } finally {
     fetchModelsBtn.classList.remove("loading");
     fetchModelsBtn.textContent = "获取模型列表";
+  }
+}
+
+async function testModelAvailability() {
+  const apiKey = apiKeyInput.value.trim();
+  const baseUrl = normalizeBaseUrl(baseUrlInput.value);
+  const model = modelInput.value.trim();
+
+  if (!apiKey) {
+    apiStatus.textContent = "先填 API Key，再检测模型是否可用。";
+    apiKeyInput.focus();
+    return;
+  }
+  if (!baseUrl) {
+    apiStatus.textContent = "先填 Base URL，再检测模型是否可用。";
+    baseUrlInput.focus();
+    return;
+  }
+  if (!model) {
+    apiStatus.textContent = "先填模型名，或先获取模型列表。";
+    modelInput.focus();
+    return;
+  }
+
+  testModelBtn.classList.add("loading");
+  testModelBtn.textContent = "检测中...";
+  apiStatus.textContent = `正在检测 ${model} 是否可用...`;
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildAuthHeaders(apiKey),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: "请只回复 OK，用来检测当前模型接口是否可用。",
+          },
+        ],
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error?.message || `请求失败 ${response.status}`);
+    }
+
+    const output = extractOutputText(data);
+    apiStatus.textContent = output
+      ? `检测通过：${compactProviderName(getProvider().name)} · ${model} 可用。`
+      : `检测通过：接口可用，但返回内容为空。`;
+    updateProviderBadges();
+  } catch (error) {
+    apiStatus.textContent = `检测失败：${error.message}。可以检查 Key、Base URL 或手动换一个模型名。`;
+  } finally {
+    testModelBtn.classList.remove("loading");
+    testModelBtn.textContent = "检测可用性";
   }
 }
 

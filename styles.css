@@ -75,7 +75,7 @@ body.settings-open {
   gap: 28px;
   width: min(1180px, calc(100vw - 40px));
   margin: 0 auto;
-  padding: 48px 0;
+  padding: 178px 0 48px;
 }
 
 .workspace,
@@ -130,14 +130,18 @@ h1 {
 }
 
 .ai-dock {
+  position: fixed;
+  top: 22px;
+  right: 24px;
+  z-index: 12;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
   align-items: center;
-  margin-top: 28px;
+  width: min(560px, calc(100vw - 48px));
   border: 2px solid var(--line);
   background: var(--card);
-  padding: 18px 20px;
+  padding: 14px 16px;
   box-shadow: 8px 8px 0 var(--soft-shadow);
 }
 
@@ -152,13 +156,14 @@ h1 {
   display: block;
   margin-top: 6px;
   color: var(--blue);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .dock-copy p {
   margin: 8px 0 0;
   color: var(--muted);
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .dock-actions {
@@ -166,6 +171,11 @@ h1 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.dock-actions button {
+  min-height: 38px;
+  padding: 0 12px;
 }
 
 .settings-overlay {
@@ -253,6 +263,13 @@ h2 {
   margin: 14px 0;
   color: var(--muted);
   line-height: 1.7;
+}
+
+.model-hint {
+  margin: 8px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .provider-grid,
@@ -491,6 +508,9 @@ pre {
   }
 
   .ai-dock {
+    position: static;
+    width: min(100vw - 28px, 620px);
+    margin: 28px auto 0;
     grid-template-columns: 1fr;
   }
 

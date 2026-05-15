@@ -7,6 +7,19 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="ai-dock">
+      <div class="dock-copy">
+        <span>AI 增强</span>
+        <strong id="providerBadge">本地策略</strong>
+        <p id="apiStatus">未使用模型 API，当前由本地关键词策略完成体检。</p>
+      </div>
+      <div class="dock-actions">
+        <button id="aiAnalyzeBtn" type="button">AI 深度体检</button>
+        <button class="ghost" id="settingsBtn" type="button">模型设置</button>
+        <button class="ghost" id="themeToggleBtn" type="button" aria-pressed="false">深色</button>
+      </div>
+    </div>
+
     <main class="shell">
       <section class="workspace">
         <div class="intro">
@@ -23,19 +36,6 @@
           <div class="actions">
             <button id="analyzeBtn" type="button">体检任务</button>
             <button class="ghost" id="sampleBtn" type="button">换个代码任务</button>
-          </div>
-        </div>
-
-        <div class="ai-dock">
-          <div class="dock-copy">
-            <span>AI 增强</span>
-            <strong id="providerBadge">OpenAI · gpt-5.4</strong>
-            <p id="apiStatus">未配置 Key 时使用本地规则版。需要模型时，点「模型设置」。</p>
-          </div>
-          <div class="dock-actions">
-            <button id="aiAnalyzeBtn" type="button">AI 深度体检</button>
-            <button class="ghost" id="settingsBtn" type="button">模型设置</button>
-            <button class="ghost" id="themeToggleBtn" type="button" aria-pressed="false">深色</button>
           </div>
         </div>
       </section>
@@ -113,7 +113,7 @@
             <strong id="settingsProviderBadge">OpenAI</strong>
           </div>
           <p>
-            兼容 OpenAI 协议的服务基本都可以接。选服务商、填 Key，先尝试自动拉模型列表；拉不到就手动填模型名。
+            兼容 OpenAI 协议的服务基本都可以接。选服务商、填 Key 后会自动拉模型列表；拉不到就手动填模型名。自定义入口在服务商列表最底部。
           </p>
           <div class="provider-grid">
             <label>
@@ -131,21 +131,17 @@
               <input id="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off" />
             </label>
             <label>
-              Model
-              <input id="modelInput" type="text" list="modelList" value="gpt-5.4" />
+              模型
+              <input id="modelInput" type="text" list="modelList" value="gpt-5.4" autocomplete="off" />
               <datalist id="modelList"></datalist>
             </label>
           </div>
-          <label>
-            可用模型
-            <select id="modelSelect">
-              <option value="">先获取模型列表，或直接手动填写模型名</option>
-            </select>
-          </label>
+          <p class="model-hint" id="modelHint">填完 API Key 后会自动获取模型列表；也可以直接手动填写模型名。</p>
           <label for="promptInput">提示词</label>
           <textarea id="promptInput" class="prompt-box" spellcheck="false"></textarea>
           <div class="actions">
             <button class="ghost" id="fetchModelsBtn" type="button">获取模型列表</button>
+            <button class="ghost" id="testModelBtn" type="button">检测可用性</button>
             <button class="ghost" id="copyPromptBtn" type="button">复制提示词</button>
             <button id="saveSettingsBtn" type="button">保存设置</button>
           </div>
