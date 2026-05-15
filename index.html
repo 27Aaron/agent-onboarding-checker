@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 员工入职体检器</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <div class="intro">
+          <p class="kicker">Agent Onboarding Desk</p>
+          <h1>AI 员工入职体检器</h1>
+          <p class="lead">
+            把一个准备交给 Agent 的任务丢进来，先看它需要什么权限、哪些动作必须审批、应该被放进怎样的工作间。
+          </p>
+        </div>
+
+        <div class="task-panel">
+          <label for="taskInput">准备交给 Agent 的任务</label>
+          <textarea id="taskInput" spellcheck="false">帮我登录公司后台，导出本月客户数据，整理成表格，再发给销售群。</textarea>
+          <div class="actions">
+            <button id="analyzeBtn" type="button">体检任务</button>
+            <button class="ghost" id="sampleBtn" type="button">换个代码任务</button>
+          </div>
+        </div>
+
+        <div class="ai-dock">
+          <div class="dock-copy">
+            <span>AI 增强</span>
+            <strong id="providerBadge">OpenAI · gpt-5.4</strong>
+            <p id="apiStatus">未配置 Key 时使用本地规则版。需要模型时，点「模型设置」。</p>
+          </div>
+          <div class="dock-actions">
+            <button id="aiAnalyzeBtn" type="button">AI 深度体检</button>
+            <button class="ghost" id="settingsBtn" type="button">模型设置</button>
+            <button class="ghost" id="themeToggleBtn" type="button" aria-pressed="false">深色</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="board">
+        <article class="risk-card" id="riskCard">
+          <p class="label">Risk Level</p>
+          <div class="risk-score" id="riskScore">高风险</div>
+          <p id="riskReason">涉及账号、客户数据、文件导出和外部发送，Agent 不能直接裸跑。</p>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <span>工牌权限</span>
+            <strong id="permissionCount">4 项</strong>
+          </div>
+          <ul id="permissions"></ul>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <span>必须停下来问人的动作</span>
+            <strong id="approvalCount">3 项</strong>
+          </div>
+          <ul id="approvals"></ul>
+        </article>
+
+        <article class="card wide">
+          <div class="card-head">
+            <span>建议写进 Agent 工作制度</span>
+            <strong>Policy Brief</strong>
+          </div>
+          <pre id="brief"></pre>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <span>沙箱配置建议</span>
+            <strong id="sandboxLevel">Strict</strong>
+          </div>
+          <ul id="sandboxRules"></ul>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <span>Hooks 门卫脚本</span>
+            <strong id="hookCount">4 个</strong>
+          </div>
+          <ul id="hooks"></ul>
+        </article>
+
+        <article class="card wide">
+          <div class="card-head">
+            <span>AI 深度体检报告</span>
+            <strong id="aiBadge">Optional</strong>
+          </div>
+          <pre id="aiReport">填入 API Key 和模型名后点击「AI 深度体检」，这里会生成一份更完整的入职报告。</pre>
+        </article>
+      </section>
+    </main>
+
+    <div class="settings-overlay" id="settingsOverlay" hidden>
+      <aside class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="sheet-head">
+          <div>
+            <p class="kicker">Model Settings</p>
+            <h2 id="settingsTitle">模型设置</h2>
+          </div>
+          <button class="ghost close-button" id="closeSettingsBtn" type="button" aria-label="关闭模型设置">关闭</button>
+        </div>
+
+        <div class="api-panel">
+          <div class="panel-title">
+            <span>OpenAI-Compatible 可选增强</span>
+            <strong id="settingsProviderBadge">OpenAI</strong>
+          </div>
+          <p>
+            兼容 OpenAI 协议的服务基本都可以接。选服务商、填 Key，先尝试自动拉模型列表；拉不到就手动填模型名。
+          </p>
+          <div class="provider-grid">
+            <label>
+              服务商
+              <select id="providerSelect"></select>
+            </label>
+            <label>
+              Base URL
+              <input id="baseUrlInput" type="text" autocomplete="off" />
+            </label>
+          </div>
+          <div class="api-grid">
+            <label>
+              API Key
+              <input id="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off" />
+            </label>
+            <label>
+              Model
+              <input id="modelInput" type="text" list="modelList" value="gpt-5.4" />
+              <datalist id="modelList"></datalist>
+            </label>
+          </div>
+          <label>
+            可用模型
+            <select id="modelSelect">
+              <option value="">先获取模型列表，或直接手动填写模型名</option>
+            </select>
+          </label>
+          <label for="promptInput">提示词</label>
+          <textarea id="promptInput" class="prompt-box" spellcheck="false"></textarea>
+          <div class="actions">
+            <button class="ghost" id="fetchModelsBtn" type="button">获取模型列表</button>
+            <button class="ghost" id="copyPromptBtn" type="button">复制提示词</button>
+            <button id="saveSettingsBtn" type="button">保存设置</button>
+          </div>
+          <p class="api-note">Key 不会写进文件。浏览器直连只适合本地演示，正式产品建议放到后端代理。</p>
+        </div>
+      </aside>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
