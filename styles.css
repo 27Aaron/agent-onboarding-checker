@@ -71,9 +71,11 @@ body.settings-open {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  grid-template-columns: minmax(320px, 0.86fr) minmax(460px, 1.14fr);
   gap: 28px;
+  align-items: start;
   width: min(1180px, calc(100vw - 40px));
+  min-height: 100vh;
   margin: 0 auto;
   padding: 48px 0;
 }
@@ -81,6 +83,13 @@ body.settings-open {
 .workspace,
 .board {
   min-width: 0;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-height: calc(100vh - 96px);
 }
 
 .intro {
@@ -116,7 +125,6 @@ h1 {
 }
 
 .task-panel {
-  margin-top: 28px;
   border: 2px solid var(--line);
   background: var(--card);
   padding: 22px;
@@ -320,6 +328,10 @@ textarea {
   background: var(--card);
   font: 16px/1.65 "Avenir Next", "PingFang SC", sans-serif;
   outline: none;
+}
+
+#taskInput {
+  min-height: 150px;
 }
 
 input,
@@ -618,9 +630,23 @@ button[data-state="error"] {
 }
 
 .risk-card {
-  grid-column: 1 / -1;
   color: #fff;
   background: var(--red);
+}
+
+.workspace .risk-card {
+  margin-top: auto;
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 18px;
+  box-shadow: 8px 8px 0 var(--line);
+}
+
+.risk-card .label {
+  color: currentColor;
+  opacity: 0.78;
 }
 
 .risk-card.medium {
@@ -635,7 +661,7 @@ button[data-state="error"] {
 .risk-score {
   margin-top: 8px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(38px, 5vw, 68px);
+  font-size: clamp(36px, 4vw, 52px);
   line-height: 1;
 }
 
@@ -644,6 +670,12 @@ button[data-state="error"] {
   margin: 14px 0 0;
   font-size: 17px;
   line-height: 1.65;
+}
+
+.workspace #riskReason {
+  max-width: none;
+  font-size: 15px;
+  line-height: 1.55;
 }
 
 .card-head {
@@ -710,9 +742,18 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .workspace {
+    min-height: auto;
+  }
+
   .wide,
   .risk-card {
     grid-column: auto;
+  }
+
+  .workspace .risk-card {
+    margin-top: 0;
+    min-height: 180px;
   }
 
   .provider-grid,
