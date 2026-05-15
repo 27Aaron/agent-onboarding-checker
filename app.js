@@ -1106,11 +1106,19 @@ function buildProjectSetupScript() {
   ].join("\n");
 }
 
+function buildExecutablePasteCommand() {
+  return [
+    "bash <<'AGENT_ONBOARDING_INSTALL'",
+    buildProjectSetupScript(),
+    "AGENT_ONBOARDING_INSTALL",
+  ].join("\n");
+}
+
 copyPanelBtn.addEventListener("click", async () => {
   try {
-    await navigator.clipboard.writeText(buildProjectSetupScript());
-    copyPanelBtn.textContent = "脚本已复制";
-    apiStatus.textContent = "安装脚本已复制。到目标项目目录里粘贴执行，就会写入 CLAUDE.md、项目级 settings 和 Hooks。";
+    await navigator.clipboard.writeText(buildExecutablePasteCommand());
+    copyPanelBtn.textContent = "命令已复制";
+    apiStatus.textContent = "可执行命令已复制。进入目标项目目录后直接粘贴回车，会创建 CLAUDE.md、项目级 settings 和 Hooks。";
   } catch {
     copyPanelBtn.textContent = "复制失败";
     apiStatus.textContent = "浏览器拒绝访问剪贴板，可以换到 HTTPS/localhost 后再试。";
