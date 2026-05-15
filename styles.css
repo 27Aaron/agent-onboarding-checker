@@ -170,6 +170,13 @@ h1 {
   white-space: nowrap;
 }
 
+.dock-copy p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .dock-actions {
   display: flex;
   flex-wrap: wrap;

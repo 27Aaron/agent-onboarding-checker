@@ -9,6 +9,7 @@ const approvals = document.querySelector("#approvals");
 const permissionCount = document.querySelector("#permissionCount");
 const approvalCount = document.querySelector("#approvalCount");
 const brief = document.querySelector("#brief");
+const policyBadge = document.querySelector("#policyBadge");
 const sandboxRules = document.querySelector("#sandboxRules");
 const sandboxLevel = document.querySelector("#sandboxLevel");
 const hooks = document.querySelector("#hooks");
@@ -37,8 +38,6 @@ const saveSettingsBtn = document.querySelector("#saveSettingsBtn");
 const settingsOverlay = document.querySelector("#settingsOverlay");
 const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const apiStatus = document.querySelector("#apiStatus");
-const aiReport = document.querySelector("#aiReport");
-const aiBadge = document.querySelector("#aiBadge");
 let modelFetchTimer;
 let modelTestTimer;
 let availableModelIds = [];
@@ -154,22 +153,30 @@ const providers = [
   },
 ];
 
-const SYSTEM_PROMPT = `你是一名 AI Agent 安全入职官。请用中文分析用户准备交给 Agent 的任务，输出一份简洁但有判断力的「AI 员工入职体检报告」。
+const SYSTEM_PROMPT = `你是一名 AI Agent 安全入职官。请用中文分析用户准备交给 Agent 的任务，把建议写成可以直接放进产品界面的结构化结果。
 
-你要像一个懂技术、也懂普通人表达的技术编辑，不要写空话。请按这个结构输出：
+请只输出 JSON，不要 Markdown，不要代码块，不要额外解释。JSON 结构如下：
 
-1. 风险等级，用「低风险 / 中风险 / 高风险」之一
-2. 为什么这么判，指出具体触发点
-3. 这名 AI 员工应该拿到哪些临时权限
-4. 哪些动作必须暂停并请求人类确认
-5. 推荐的沙箱、Hooks、日志和回滚设置
-6. 如果要把它放进真实生产环境，还缺哪三件事
+{
+  "riskLevel": "低风险 / 中风险 / 高风险 三选一",
+  "riskReason": "一句话说明具体触发点",
+  "workPolicy": [
+    "写给 Agent 的工作制度，5-7 条，每条必须是可执行的制度"
+  ],
+  "sandboxRules": [
+    "沙箱配置建议，4-6 条，每条要说明限制、记录或回滚边界"
+  ],
+  "hooks": [
+    "hook-name：触发条件 -> 暂停、记录、阻断或要求确认的动作"
+  ]
+}
 
 要求：
 - 不要建议用户把真实密钥、cookie、隐私数据直接交给 Agent
 - 不要鼓励绕过审批、删除日志、隐藏操作记录
-- 输出要具体，避免泛泛而谈
-- 语气像一个认真提醒你的同事，不要像合规报告`;
+- 不要写“加强安全意识”这类空话，要写具体规则
+- 普通人要能看懂，但技术部分必须准确
+- 可以吸收本地规则，但不要机械重复`;
 
 const rules = [
   {
@@ -368,22 +375,12 @@ function sentenceEnd(text) {
   return /[。！？.!?]$/.test(text) ? text : `${text}。`;
 }
 
-function buildAiRequestErrorReport(error, baseUrl) {
+function buildAiRequestFailureMessage(error, baseUrl) {
   if (isBrowserRequestBlocked(error)) {
-    return [
-      "AI 请求没有成功。",
-      "",
-      "浏览器没有拿到接口响应，这通常不是模型拒绝，也不一定是 Key 写错。",
-      "",
-      "静态 H5 直接请求模型接口时，部分服务商会在浏览器层拦截跨域请求。Coding Plan、部分国内厂商接口、企业网关或浏览器插件都可能触发这种情况。",
-      "",
-      `当前 Base URL：${baseUrl}`,
-      "",
-      "可以先换一个允许浏览器直连的 OpenAI-compatible 入口；如果要部署成正式工具，更稳的做法是用自己的后端或 Worker 转发请求。页面已保留本地规则体检结果。",
-    ].join("\n");
+    return `${formatRequestError(error, baseUrl)}已保留本地规则建议。`;
   }
 
-  return ["AI 请求没有成功。", "", formatRequestError(error, baseUrl), "", "页面已保留本地规则体检结果。"].join("\n");
+  return `AI 请求失败：${sentenceEnd(formatRequestError(error, baseUrl))}已保留本地规则建议。`;
 }
 
 async function readJsonResponse(response) {
@@ -407,6 +404,132 @@ function renderList(node, items) {
   });
 }
 
+function normalizeRiskLevel(value) {
+  const text = String(value || "");
+  if (text.includes("高")) return "高风险";
+  if (text.includes("中")) return "中风险";
+  if (text.includes("低")) return "低风险";
+  return "";
+}
+
+function sandboxModeForRisk(level) {
+  return level === "高风险" ? "Strict" : level === "中风险" ? "Guarded" : "Light";
+}
+
+function applyRiskResult(level, reason) {
+  const normalizedLevel = normalizeRiskLevel(level) || "低风险";
+  riskCard.className = `risk-card ${normalizedLevel === "低风险" ? "low" : normalizedLevel === "中风险" ? "medium" : ""}`;
+  riskScore.textContent = normalizedLevel;
+  riskReason.textContent = reason || "这个任务适合 Agent 自主处理，保留日志和只读边界即可。";
+}
+
+function toList(value) {
+  const source = Array.isArray(value) ? value : String(value || "").split(/\n+/);
+  return source
+    .map((item) => String(item).replace(/^\s*(?:[-*•]|\d+[.、)]|\[[^\]]+\])\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function extractJsonObject(text) {
+  const trimmed = String(text || "").trim();
+  const fenced = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  try {
+    return JSON.parse(fenced);
+  } catch {
+    const start = fenced.indexOf("{");
+    const end = fenced.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) return null;
+    try {
+      return JSON.parse(fenced.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+}
+
+function parseAiEnhancement(output) {
+  const data = extractJsonObject(output);
+  if (!data) {
+    return {
+      rawText: String(output || "").trim(),
+      riskLevel: "",
+      riskReason: "",
+      workPolicy: [],
+      sandboxRules: [],
+      hooks: [],
+    };
+  }
+
+  return {
+    rawText: String(output || "").trim(),
+    riskLevel: normalizeRiskLevel(data.riskLevel || data.level || data.risk),
+    riskReason: String(data.riskReason || data.reason || data.summary || "").trim(),
+    workPolicy: toList(data.workPolicy || data.policy || data.agentPolicy || data.brief),
+    sandboxRules: toList(data.sandboxRules || data.sandbox || data.sandboxSuggestions),
+    hooks: toList(data.hooks || data.hookRules || data.guardHooks),
+  };
+}
+
+function formatPolicyBrief({ title, task, level, reason, workPolicy, approvals = [], checklist = [], rawText = "" }) {
+  const lines = [title, "", `任务：${task || "未填写任务"}`, `风险等级：${level}`];
+  if (reason) lines.push(`判断：${reason}`);
+
+  if (workPolicy.length) {
+    lines.push("", "工作制度", ...workPolicy.map((item) => `- ${item}`));
+  }
+
+  if (approvals.length) {
+    lines.push("", "必须暂停并请求人类确认", ...approvals.map((item) => `- ${item}`));
+  }
+
+  if (checklist.length) {
+    lines.push("", "交付前自检", ...checklist.map((item) => `- ${item}`));
+  }
+
+  if (rawText) {
+    lines.push("", "AI 补充判断", rawText);
+  }
+
+  return lines.join("\n");
+}
+
+function applyAiEnhancement(output) {
+  const enhancement = parseAiEnhancement(output);
+  const task = input.value.trim() || "未填写任务";
+  const level = enhancement.riskLevel || riskScore.textContent;
+  const reason = enhancement.riskReason || riskReason.textContent;
+  const localApprovals = [...approvals.querySelectorAll("li")].map((li) => li.textContent);
+  const hasStructuredPolicy = enhancement.workPolicy.length > 0;
+  const hasStructuredContent = hasStructuredPolicy || enhancement.sandboxRules.length > 0 || enhancement.hooks.length > 0;
+
+  applyRiskResult(level, reason);
+  brief.textContent = formatPolicyBrief({
+    title: hasStructuredContent ? "AI 员工工作制度" : "AI 补充后的工作制度",
+    task,
+    level,
+    reason,
+    workPolicy: enhancement.workPolicy,
+    approvals: localApprovals,
+    rawText: hasStructuredPolicy ? "" : enhancement.rawText,
+  });
+  policyBadge.textContent = hasStructuredContent ? "AI 写入" : "AI 原文";
+
+  if (enhancement.sandboxRules.length) {
+    renderList(sandboxRules, enhancement.sandboxRules);
+    sandboxLevel.textContent = `AI · ${sandboxModeForRisk(level)}`;
+  } else {
+    sandboxLevel.textContent = `${sandboxModeForRisk(level)} · 本地`;
+  }
+
+  if (enhancement.hooks.length) {
+    renderList(hooks, enhancement.hooks);
+    hookCount.textContent = `${enhancement.hooks.length} 个`;
+  }
+
+  return hasStructuredContent;
+}
+
 function analyze() {
   const text = input.value.trim();
   const matched = rules.filter((rule) => rule.keys.some((key) => text.includes(key)));
@@ -424,9 +547,7 @@ function analyze() {
   const fallbackPermissions = ["只读资料权限", "记录完整操作日志"];
   const fallbackApprovals = ["访问新网站或要求额外权限时停下来问人"];
 
-  riskCard.className = `risk-card ${level === "低风险" ? "low" : level === "中风险" ? "medium" : ""}`;
-  riskScore.textContent = level;
-  riskReason.textContent = reason;
+  applyRiskResult(level, reason);
 
   const finalPermissions = permissionItems.length ? permissionItems : fallbackPermissions;
   const finalApprovals = approvalItems.length ? approvalItems : fallbackApprovals;
@@ -439,37 +560,29 @@ function analyze() {
   const hookItems = buildHooks(text);
   renderList(sandboxRules, sandboxItems);
   renderList(hooks, hookItems);
-  sandboxLevel.textContent = level === "高风险" ? "Strict" : level === "中风险" ? "Guarded" : "Light";
+  sandboxLevel.textContent = sandboxModeForRisk(level);
   hookCount.textContent = `${hookItems.length} 个`;
+  policyBadge.textContent = "本地版";
 
-  brief.textContent = [
-    "AI 员工入职说明",
-    "",
-    `任务：${text || "未填写任务"}`,
-    `风险等级：${level}`,
-    "",
-    "工作间设置",
-    "- 默认使用沙箱环境，不直接触碰真实生产数据",
-    "- 文件写入限制在任务目录或临时分支",
-    "- 网络访问采用白名单，新增域名必须确认",
-    "",
-    "必须暂停并请求人类确认",
-    ...finalApprovals.map((item) => `- ${item}`),
-    "",
-    "交付前自检",
-    "- 说明改了什么、为什么改、影响哪些文件或数据",
-    "- 给出可复现的测试或检查步骤",
-    "- 不发送、不删除、不提交任何未经确认的结果",
-  ].join("\n");
+  brief.textContent = formatPolicyBrief({
+    title: "AI 员工入职说明",
+    task: text || "未填写任务",
+    level,
+    workPolicy: [
+      "默认使用沙箱环境，不直接触碰真实生产数据",
+      "文件写入限制在任务目录或临时分支",
+      "网络访问采用白名单，新增域名必须确认",
+    ],
+    approvals: finalApprovals,
+    checklist: [
+      "说明改了什么、为什么改、影响哪些文件或数据",
+      "给出可复现的测试或检查步骤",
+      "不发送、不删除、不提交任何未经确认的结果",
+    ],
+  });
 
   if (!apiKeyInput.value.trim()) {
-    aiReport.textContent = [
-      "本地规则体检已完成。",
-      "",
-      "想让这份报告更像真人安全顾问写的，可以点「模型设置」，选择 OpenAI-compatible 服务，填入 API Key 和模型名，然后左侧主按钮会切换为「AI 深度体检」。",
-      "页面会把任务、规则体检结果和提示词发给 /chat/completions，生成一份更完整的入职报告。",
-    ].join("\n");
-    aiBadge.textContent = "Optional";
+    apiStatus.textContent = "未使用模型 API，当前由本地关键词策略完成体检。";
   }
 }
 
@@ -1047,7 +1160,9 @@ async function runAiAnalysis() {
   analyze();
   analyzeBtn.classList.add("loading");
   analyzeBtn.textContent = "体检中...";
-  aiBadge.textContent = "Running";
+  policyBadge.textContent = "AI 生成中";
+  sandboxLevel.textContent = "生成中";
+  hookCount.textContent = "生成中";
   apiStatus.textContent = `正在请求 ${baseUrl}/chat/completions...`;
 
   try {
@@ -1077,15 +1192,14 @@ async function runAiAnalysis() {
       throw new Error(data.error?.message || `请求失败 ${response.status}`);
     }
 
-    aiReport.textContent = extractOutputText(data);
-    aiBadge.textContent = "AI Report";
-    apiStatus.textContent = "AI 深度体检完成。";
+    const output = extractOutputText(data);
+    const hasStructuredContent = applyAiEnhancement(output);
+    apiStatus.textContent = hasStructuredContent
+      ? "AI 建议已写入工作制度、沙箱配置和 Hooks。"
+      : "AI 返回的不是结构化 JSON，已写入工作制度补充判断。";
   } catch (error) {
-    aiReport.textContent = buildAiRequestErrorReport(error, baseUrl);
-    aiBadge.textContent = "Error";
-    apiStatus.textContent = isBrowserRequestBlocked(error)
-      ? "浏览器直连模型接口失败，已保留本地规则报告。"
-      : "AI 请求失败，已保留本地规则报告。";
+    analyze();
+    apiStatus.textContent = buildAiRequestFailureMessage(error, baseUrl);
   } finally {
     analyzeBtn.classList.remove("loading");
     updatePrimaryButtonLabel();
