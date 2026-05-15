@@ -30,7 +30,6 @@ const modelHint = document.querySelector("#modelHint");
 const fetchModelsBtn = document.querySelector("#fetchModelsBtn");
 const testModelBtn = document.querySelector("#testModelBtn");
 const testStatus = document.querySelector("#testStatus");
-const aiAnalyzeBtn = document.querySelector("#aiAnalyzeBtn");
 const copyPromptBtn = document.querySelector("#copyPromptBtn");
 const settingsBtn = document.querySelector("#settingsBtn");
 const closeSettingsBtn = document.querySelector("#closeSettingsBtn");
@@ -219,14 +218,24 @@ function compactProviderName(name) {
   return name.replace(" 官方", "");
 }
 
+function hasModelConfig() {
+  return Boolean(apiKeyInput.value.trim() && baseUrlInput.value.trim() && modelInput.value.trim());
+}
+
+function updatePrimaryButtonLabel() {
+  analyzeBtn.textContent = hasModelConfig() ? "AI 深度体检" : "体检任务";
+}
+
 function updateProviderBadges(suffix = "") {
   const provider = getProvider();
   const providerName = compactProviderName(provider.name);
   const model = modelInput.value.trim() || "未选模型";
-  const isConfigured = Boolean(apiKeyInput.value.trim() && baseUrlInput.value.trim() && modelInput.value.trim());
-  providerBadge.textContent = isConfigured ? providerName : "本地策略";
-  dockModelBadge.textContent = isConfigured ? `${model}${suffix}` : "本地规则";
+  const isConfigured = hasModelConfig();
+  providerBadge.textContent = isConfigured ? providerName : "本地规则";
+  dockModelBadge.hidden = !isConfigured;
+  dockModelBadge.textContent = isConfigured ? `${model}${suffix}` : "";
   settingsProviderBadge.textContent = providerName;
+  updatePrimaryButtonLabel();
 }
 
 function openSettings(focusNode) {
@@ -392,14 +401,20 @@ function analyze() {
     aiReport.textContent = [
       "本地规则体检已完成。",
       "",
-      "想让这份报告更像真人安全顾问写的，可以点「模型设置」，选择 OpenAI-compatible 服务，填入 API Key 和模型名，然后点击「AI 深度体检」。",
+      "想让这份报告更像真人安全顾问写的，可以点「模型设置」，选择 OpenAI-compatible 服务，填入 API Key 和模型名，然后左侧主按钮会切换为「AI 深度体检」。",
       "页面会把任务、规则体检结果和提示词发给 /chat/completions，生成一份更完整的入职报告。",
     ].join("\n");
     aiBadge.textContent = "Optional";
   }
 }
 
-analyzeBtn.addEventListener("click", analyze);
+analyzeBtn.addEventListener("click", () => {
+  if (hasModelConfig()) {
+    runAiAnalysis();
+    return;
+  }
+  analyze();
+});
 sampleBtn.addEventListener("click", () => {
   input.value = input.value === codeSample ? dataSample : codeSample;
   analyze();
@@ -520,8 +535,6 @@ copyPromptBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(promptInput.value);
   apiStatus.textContent = "提示词已复制，可以直接拿去改。";
 });
-
-aiAnalyzeBtn.addEventListener("click", runAiAnalysis);
 
 function buildSandboxRules(level, text) {
   const items = [
@@ -964,8 +977,8 @@ async function runAiAnalysis() {
   }
 
   analyze();
-  aiAnalyzeBtn.classList.add("loading");
-  aiAnalyzeBtn.textContent = "体检中...";
+  analyzeBtn.classList.add("loading");
+  analyzeBtn.textContent = "体检中...";
   aiBadge.textContent = "Running";
   apiStatus.textContent = `正在请求 ${baseUrl}/chat/completions...`;
 
@@ -1010,8 +1023,8 @@ async function runAiAnalysis() {
     aiBadge.textContent = "Error";
     apiStatus.textContent = "AI 请求失败，已保留本地规则报告。";
   } finally {
-    aiAnalyzeBtn.classList.remove("loading");
-    aiAnalyzeBtn.textContent = "AI 深度体检";
+    analyzeBtn.classList.remove("loading");
+    updatePrimaryButtonLabel();
   }
 }
 
