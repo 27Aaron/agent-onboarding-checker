@@ -42,6 +42,7 @@ const aiBadge = document.querySelector("#aiBadge");
 let modelFetchTimer;
 let modelTestTimer;
 let availableModelIds = [];
+const apiKeyCachePrefix = "agent-checker-api-key:";
 
 const providers = [
   {
@@ -226,6 +227,23 @@ function updatePrimaryButtonLabel() {
   analyzeBtn.textContent = hasModelConfig() ? "AI 深度体检" : "体检任务";
 }
 
+function getApiKeyCacheKey(providerId) {
+  return `${apiKeyCachePrefix}${providerId}`;
+}
+
+function readCachedApiKey(providerId) {
+  return localStorage.getItem(getApiKeyCacheKey(providerId)) || "";
+}
+
+function cacheApiKey(providerId, apiKey = apiKeyInput.value.trim()) {
+  if (!providerId) return;
+  if (apiKey) {
+    localStorage.setItem(getApiKeyCacheKey(providerId), apiKey);
+    return;
+  }
+  localStorage.removeItem(getApiKeyCacheKey(providerId));
+}
+
 function updateProviderBadges(suffix = "") {
   const provider = getProvider();
   const providerName = compactProviderName(provider.name);
@@ -289,9 +307,14 @@ function getProvider() {
 
 function applyProvider(providerId) {
   const provider = providers.find((item) => item.id === providerId) || providers[0];
+  const previousProviderId = providerSelect.value;
+  if (previousProviderId && previousProviderId !== provider.id) {
+    cacheApiKey(previousProviderId);
+  }
   providerSelect.value = provider.id;
   baseUrlInput.value = provider.baseUrl;
   modelInput.value = provider.model;
+  apiKeyInput.value = readCachedApiKey(provider.id);
   resetTestFeedback({ autoDetect: true });
   updateProviderTrigger();
   updateProviderBadges();
@@ -461,6 +484,7 @@ baseUrlInput.addEventListener("input", () => {
   scheduleModelFetch();
 });
 apiKeyInput.addEventListener("input", () => {
+  cacheApiKey(providerSelect.value);
   resetTestFeedback({ autoDetect: true });
   updateProviderBadges();
   if (!apiKeyInput.value.trim()) {
