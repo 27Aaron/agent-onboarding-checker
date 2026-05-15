@@ -20,6 +20,7 @@ const providerTriggerText = document.querySelector("#providerTriggerText");
 const providerMenu = document.querySelector("#providerMenu");
 const baseUrlInput = document.querySelector("#baseUrlInput");
 const providerBadge = document.querySelector("#providerBadge");
+const dockModelBadge = document.querySelector("#dockModelBadge");
 const settingsProviderBadge = document.querySelector("#settingsProviderBadge");
 const apiKeyInput = document.querySelector("#apiKeyInput");
 const modelInput = document.querySelector("#modelInput");
@@ -222,7 +223,8 @@ function updateProviderBadges(suffix = "") {
   const providerName = compactProviderName(provider.name);
   const model = modelInput.value.trim() || "未选模型";
   const isConfigured = Boolean(apiKeyInput.value.trim() && baseUrlInput.value.trim() && modelInput.value.trim());
-  providerBadge.textContent = isConfigured ? `${providerName} · ${model}${suffix}` : "本地策略";
+  providerBadge.textContent = isConfigured ? providerName : "本地策略";
+  dockModelBadge.textContent = isConfigured ? `${model}${suffix}` : "本地规则";
   settingsProviderBadge.textContent = providerName;
 }
 
