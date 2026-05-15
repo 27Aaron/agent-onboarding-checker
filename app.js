@@ -470,13 +470,6 @@ function setActiveResultTab(tab) {
   });
 }
 
-function getActivePanelText() {
-  if (activeResultTab === "policy") return brief.textContent.trim();
-  const panel = resultPanels.find((item) => item.dataset.panel === activeResultTab);
-  const items = panel ? getPanelItems(panel) : [];
-  return items.map((item) => `- ${item}`).join("\n");
-}
-
 function normalizeRiskLevel(value) {
   const text = String(value || "");
   if (text.includes("高")) return "高风险";
@@ -817,19 +810,6 @@ copyPromptBtn.addEventListener("click", async () => {
   apiStatus.textContent = "提示词已复制，可以直接拿去改。";
 });
 
-copyPanelBtn.addEventListener("click", async () => {
-  const content = getActivePanelText();
-  try {
-    await navigator.clipboard.writeText(content);
-    copyPanelBtn.textContent = "已复制";
-  } catch {
-    copyPanelBtn.textContent = "复制失败";
-  }
-  window.setTimeout(() => {
-    copyPanelBtn.textContent = "复制当前";
-  }, 1200);
-});
-
 function buildSandboxRules(level, text) {
   const items = [
     "文件写入限制在任务目录或临时分支",
@@ -879,6 +859,266 @@ function buildAiInput() {
     [...hooks.querySelectorAll("li")].map((li) => `- ${li.textContent}`).join("\n"),
   ].join("\n");
 }
+
+function markdownList(title, items, fallbackItems = []) {
+  const finalItems = items.length ? items : fallbackItems;
+  return [`### ${title}`, ...finalItems.map((item) => `- ${item}`)].join("\n");
+}
+
+function buildClaudeMdSection() {
+  const permissionItems = getPanelItems(permissions);
+  const approvalItems = getPanelItems(approvals);
+  const sandboxItems = getPanelItems(sandboxRules);
+  const hookItems = getPanelItems(hooks);
+  return [
+    "<!-- AGENT_ONBOARDING_CHECKER_START -->",
+    "## AI 员工入职规则",
+    "",
+    "> 由 Agent Onboarding Checker 生成。把这里当作当前项目的 Agent 上岗说明。",
+    "",
+    "### 当前任务",
+    input.value.trim() || "未填写任务",
+    "",
+    "### 风险判断",
+    `- 风险等级：${riskScore.textContent.trim() || "未判断"}`,
+    `- 判断：${riskReason.textContent.trim() || "暂无判断"}`,
+    "",
+    "### 工作制度",
+    brief.textContent.trim() || "暂无工作制度。",
+    "",
+    markdownList("权限边界", permissionItems, ["默认只给任务所需的最小权限"]),
+    "",
+    markdownList("必须人工确认", approvalItems, ["导出、删除、发送、发布、登录授权前必须确认"]),
+    "",
+    markdownList("沙箱原则", sandboxItems, ["文件写入限制在当前项目目录或临时输出目录"]),
+    "",
+    markdownList("Hooks 门卫", hookItems, ["高风险命令、密钥文件和外部发送动作需要拦截或确认"]),
+    "<!-- AGENT_ONBOARDING_CHECKER_END -->",
+  ].join("\n");
+}
+
+function buildClaudeSettings() {
+  return JSON.stringify(
+    {
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
+      permissions: {
+        deny: [
+          "Read(./.env)",
+          "Read(./.env.*)",
+          "Read(./secrets/**)",
+          "Read(./.aws/credentials)",
+          "Read(./.ssh/**)",
+          "Bash(git push*)",
+          "Bash(npm publish*)",
+          "Bash(pnpm publish*)",
+          "Bash(rm -rf*)",
+        ],
+        ask: [
+          "Bash(rm *)",
+          "Bash(curl *)",
+          "Bash(wget *)",
+          "Bash(scp *)",
+          "Bash(rsync *)",
+          "Bash(psql *)",
+          "Bash(mysql *)",
+        ],
+      },
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Bash|Read|Edit|Write|MultiEdit",
+            hooks: [
+              {
+                type: "command",
+                command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.sh",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  );
+}
+
+function buildGuardHookScript() {
+  return [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "",
+    "payload_file=\"$(mktemp)\"",
+    "cat > \"$payload_file\"",
+    "cleanup() { rm -f \"$payload_file\"; }",
+    "trap cleanup EXIT",
+    "",
+    "if ! command -v python3 >/dev/null 2>&1; then",
+    "  exit 0",
+    "fi",
+    "",
+    "python3 - \"$payload_file\" <<'PY'",
+    "import json",
+    "import os",
+    "import re",
+    "import sys",
+    "",
+    "try:",
+    "    with open(sys.argv[1], 'r', encoding='utf-8') as f:",
+    "        payload = json.load(f)",
+    "except Exception:",
+    "    sys.exit(0)",
+    "",
+    "tool = str(payload.get('tool_name') or '')",
+    "tool_input = payload.get('tool_input') or {}",
+    "command = str(tool_input.get('command') or '')",
+    "file_path = str(tool_input.get('file_path') or tool_input.get('path') or '')",
+    "project_dir = os.path.realpath(os.environ.get('CLAUDE_PROJECT_DIR') or os.getcwd())",
+    "",
+    "def respond(decision, reason):",
+    "    print(json.dumps({",
+    "        'hookSpecificOutput': {",
+    "            'hookEventName': 'PreToolUse',",
+    "            'permissionDecision': decision,",
+    "            'permissionDecisionReason': reason,",
+    "        }",
+    "    }, ensure_ascii=False))",
+    "",
+    "def normalize(path):",
+    "    if not path:",
+    "        return ''",
+    "    path = os.path.expanduser(path)",
+    "    if not os.path.isabs(path):",
+    "        path = os.path.join(project_dir, path)",
+    "    return os.path.realpath(path)",
+    "",
+    "def in_project_or_tmp(path):",
+    "    return path.startswith(project_dir + os.sep) or path == project_dir or path.startswith('/tmp/')",
+    "",
+    "protected_patterns = [",
+    "    r'(^|/)\\.env(\\..*)?$',",
+    "    r'(^|/)secrets(/|$)',",
+    "    r'(^|/)\\.aws/credentials$',",
+    "    r'(^|/)\\.ssh(/|$)',",
+    "    r'(^|/)id_rsa$',",
+    "    r'(^|/)id_ed25519$',",
+    "]",
+    "",
+    "if tool in {'Read', 'Edit', 'Write', 'MultiEdit'} and file_path:",
+    "    resolved = normalize(file_path)",
+    "    relative = os.path.relpath(resolved, project_dir) if in_project_or_tmp(resolved) else resolved",
+    "    if any(re.search(pattern, resolved) or re.search(pattern, relative) for pattern in protected_patterns):",
+    "        respond('deny', '禁止读取或修改密钥、环境变量、SSH 凭证和 secrets 文件。')",
+    "        sys.exit(0)",
+    "    if not in_project_or_tmp(resolved):",
+    "        respond('ask', '这个文件不在当前项目目录或 /tmp 内，请人工确认是否允许。')",
+    "        sys.exit(0)",
+    "",
+    "if tool == 'Bash':",
+    "    compact = ' '.join(command.split())",
+    "    deny_patterns = [",
+    "        r'\\bgit\\s+push\\b',",
+    "        r'\\b(?:npm|pnpm)\\s+publish\\b',",
+    "        r'\\brm\\s+-rf\\s+(?:/|~|\\*|\\.)',",
+    "        r'\\bsudo\\b',",
+    "        r'\\b(?:drop|truncate)\\s+database\\b',",
+    "    ]",
+    "    ask_patterns = [",
+    "        r'\\brm\\b',",
+    "        r'\\bcurl\\b',",
+    "        r'\\bwget\\b',",
+    "        r'\\bscp\\b',",
+    "        r'\\brsync\\b',",
+    "        r'\\bchmod\\s+-R\\b',",
+    "        r'\\bpsql\\b',",
+    "        r'\\bmysql\\b',",
+    "    ]",
+    "    if any(re.search(pattern, compact, re.I) for pattern in deny_patterns):",
+    "        respond('deny', '高风险命令已拦截：需要人工改写任务或手动执行。')",
+    "        sys.exit(0)",
+    "    if any(re.search(pattern, compact, re.I) for pattern in ask_patterns):",
+    "        respond('ask', '命令可能访问网络、删除文件、修改权限或触碰数据库，请人工确认。')",
+    "        sys.exit(0)",
+    "",
+    "sys.exit(0)",
+    "PY",
+  ].join("\n");
+}
+
+function buildProjectSetupScript() {
+  const claudeSection = buildClaudeMdSection();
+  const settingsJson = buildClaudeSettings();
+  const guardScript = buildGuardHookScript();
+  return [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "",
+    "mkdir -p .claude/hooks",
+    "timestamp=\"$(date +%Y%m%d%H%M%S)\"",
+    "",
+    "backup_if_exists() {",
+    "  if [ -e \"$1\" ]; then",
+    "    cp \"$1\" \"$1.bak.$timestamp\"",
+    "  fi",
+    "}",
+    "",
+    "replace_or_append_section() {",
+    "  file=\"$1\"",
+    "  start_marker=\"$2\"",
+    "  end_marker=\"$3\"",
+    "  section_file=\"$4\"",
+    "  if [ -f \"$file\" ] && grep -Fq \"$start_marker\" \"$file\"; then",
+    "    awk -v start=\"$start_marker\" -v end=\"$end_marker\" -v section=\"$section_file\" '",
+    "      $0 == start { while ((getline line < section) > 0) print line; skipping=1; next }",
+    "      $0 == end { skipping=0; next }",
+    "      !skipping { print }",
+    "    ' \"$file\" > \"$file.tmp.$$\"",
+    "    mv \"$file.tmp.$$\" \"$file\"",
+    "  else",
+    "    touch \"$file\"",
+    "    if [ -s \"$file\" ]; then printf '\\n\\n' >> \"$file\"; fi",
+    "    cat \"$section_file\" >> \"$file\"",
+    "  fi",
+    "}",
+    "",
+    "backup_if_exists CLAUDE.md",
+    "section_file=\"$(mktemp)\"",
+    "cat > \"$section_file\" <<'AGENT_ONBOARDING_CLAUDE'",
+    claudeSection,
+    "AGENT_ONBOARDING_CLAUDE",
+    "replace_or_append_section CLAUDE.md '<!-- AGENT_ONBOARDING_CHECKER_START -->' '<!-- AGENT_ONBOARDING_CHECKER_END -->' \"$section_file\"",
+    "rm -f \"$section_file\"",
+    "",
+    "backup_if_exists .claude/settings.json",
+    "cat > .claude/settings.json <<'AGENT_ONBOARDING_SETTINGS'",
+    settingsJson,
+    "AGENT_ONBOARDING_SETTINGS",
+    "",
+    "backup_if_exists .claude/hooks/agent-guard.sh",
+    "cat > .claude/hooks/agent-guard.sh <<'AGENT_ONBOARDING_HOOK'",
+    guardScript,
+    "AGENT_ONBOARDING_HOOK",
+    "chmod +x .claude/hooks/agent-guard.sh",
+    "",
+    "printf '\\nAgent onboarding files are ready in %s\\n' \"$(pwd)\"",
+    "printf '  - CLAUDE.md\\n'",
+    "printf '  - .claude/settings.json\\n'",
+    "printf '  - .claude/hooks/agent-guard.sh\\n'",
+  ].join("\n");
+}
+
+copyPanelBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(buildProjectSetupScript());
+    copyPanelBtn.textContent = "脚本已复制";
+    apiStatus.textContent = "安装脚本已复制。到目标项目目录里粘贴执行，就会写入 CLAUDE.md、项目级 settings 和 Hooks。";
+  } catch {
+    copyPanelBtn.textContent = "复制失败";
+    apiStatus.textContent = "浏览器拒绝访问剪贴板，可以换到 HTTPS/localhost 后再试。";
+  }
+  window.setTimeout(() => {
+    copyPanelBtn.textContent = "复制安装脚本";
+  }, 1600);
+});
 
 function parseModelIds(data) {
   const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
