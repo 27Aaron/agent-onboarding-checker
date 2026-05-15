@@ -4,10 +4,14 @@ const sampleBtn = document.querySelector("#sampleBtn");
 const riskCard = document.querySelector("#riskCard");
 const riskScore = document.querySelector("#riskScore");
 const riskReason = document.querySelector("#riskReason");
+const riskToggleBtn = document.querySelector("#riskToggleBtn");
+const riskDetails = document.querySelector("#riskDetails");
 const permissions = document.querySelector("#permissions");
 const approvals = document.querySelector("#approvals");
 const permissionCount = document.querySelector("#permissionCount");
 const approvalCount = document.querySelector("#approvalCount");
+const permissionPreview = document.querySelector("#permissionPreview");
+const approvalPreview = document.querySelector("#approvalPreview");
 const brief = document.querySelector("#brief");
 const policyBadge = document.querySelector("#policyBadge");
 const sandboxRules = document.querySelector("#sandboxRules");
@@ -38,9 +42,14 @@ const saveSettingsBtn = document.querySelector("#saveSettingsBtn");
 const settingsOverlay = document.querySelector("#settingsOverlay");
 const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const apiStatus = document.querySelector("#apiStatus");
+const resultTabs = [...document.querySelectorAll(".result-tab")];
+const resultPanels = [...document.querySelectorAll(".result-panel")];
+const summaryTiles = [...document.querySelectorAll("[data-open-tab]")];
+const copyPanelBtn = document.querySelector("#copyPanelBtn");
 let modelFetchTimer;
 let modelTestTimer;
 let availableModelIds = [];
+let activeResultTab = "policy";
 const apiKeyCachePrefix = "agent-checker-api-key:";
 
 const providers = [
@@ -404,6 +413,47 @@ function renderList(node, items) {
   });
 }
 
+function getPanelItems(node) {
+  return [...node.querySelectorAll("li")].map((li) => li.textContent.trim()).filter(Boolean);
+}
+
+function summarizeItem(items, fallback) {
+  return items[0] || fallback;
+}
+
+function updateSummaryPreviews(permissionItems, approvalItems) {
+  permissionPreview.textContent = summarizeItem(permissionItems, "只读资料权限，记录完整操作日志");
+  approvalPreview.textContent = summarizeItem(approvalItems, "访问新网站或要求额外权限时停下来问人");
+}
+
+function setActiveResultTab(tab) {
+  activeResultTab = tab;
+  resultTabs.forEach((button) => {
+    const isActive = button.dataset.tab === tab;
+    button.setAttribute("aria-selected", String(isActive));
+  });
+  resultPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.panel !== tab;
+  });
+}
+
+function getActivePanelText() {
+  if (activeResultTab === "policy") return brief.textContent.trim();
+  const panel = resultPanels.find((item) => item.dataset.panel === activeResultTab);
+  const items = panel ? getPanelItems(panel) : [];
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function buildRiskDetails(matchedRules) {
+  if (!matchedRules.length) {
+    return ["没有命中高危关键词，仍建议保留日志和只读边界"];
+  }
+  return matchedRules.map((rule) => {
+    const matchedKeys = rule.keys.filter((key) => input.value.includes(key)).slice(0, 4).join(" / ");
+    return `${matchedKeys || rule.keys[0]}：${rule.approval}`;
+  });
+}
+
 function normalizeRiskLevel(value) {
   const text = String(value || "");
   if (text.includes("高")) return "高风险";
@@ -553,8 +603,11 @@ function analyze() {
   const finalApprovals = approvalItems.length ? approvalItems : fallbackApprovals;
   renderList(permissions, finalPermissions);
   renderList(approvals, finalApprovals);
+  renderList(riskDetails, buildRiskDetails(matched));
+  riskDetails.hidden = riskToggleBtn.getAttribute("aria-expanded") !== "true";
   permissionCount.textContent = `${finalPermissions.length} 项`;
   approvalCount.textContent = `${finalApprovals.length} 项`;
+  updateSummaryPreviews(finalPermissions, finalApprovals);
 
   const sandboxItems = buildSandboxRules(level, text);
   const hookItems = buildHooks(text);
@@ -593,9 +646,21 @@ analyzeBtn.addEventListener("click", () => {
   }
   analyze();
 });
+riskToggleBtn.addEventListener("click", () => {
+  const shouldOpen = riskDetails.hidden;
+  riskDetails.hidden = !shouldOpen;
+  riskToggleBtn.setAttribute("aria-expanded", String(shouldOpen));
+  riskToggleBtn.textContent = shouldOpen ? "收起触发点" : "查看触发点";
+});
 sampleBtn.addEventListener("click", () => {
   input.value = input.value === codeSample ? dataSample : codeSample;
   analyze();
+});
+resultTabs.forEach((button) => {
+  button.addEventListener("click", () => setActiveResultTab(button.dataset.tab));
+});
+summaryTiles.forEach((tile) => {
+  tile.addEventListener("click", () => setActiveResultTab(tile.dataset.openTab));
 });
 providerSelect.addEventListener("change", () => applyProvider(providerSelect.value));
 providerTrigger.addEventListener("click", () => {
@@ -713,6 +778,19 @@ themeToggleBtn.addEventListener("click", () => {
 copyPromptBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(promptInput.value);
   apiStatus.textContent = "提示词已复制，可以直接拿去改。";
+});
+
+copyPanelBtn.addEventListener("click", async () => {
+  const content = getActivePanelText();
+  try {
+    await navigator.clipboard.writeText(content);
+    copyPanelBtn.textContent = "已复制";
+  } catch {
+    copyPanelBtn.textContent = "复制失败";
+  }
+  window.setTimeout(() => {
+    copyPanelBtn.textContent = "复制当前";
+  }, 1200);
 });
 
 function buildSandboxRules(level, text) {
@@ -1194,6 +1272,7 @@ async function runAiAnalysis() {
 
     const output = extractOutputText(data);
     const hasStructuredContent = applyAiEnhancement(output);
+    setActiveResultTab("policy");
     apiStatus.textContent = hasStructuredContent
       ? "AI 建议已写入工作制度、沙箱配置和 Hooks。"
       : "AI 返回的不是结构化 JSON，已写入工作制度补充判断。";
@@ -1209,3 +1288,4 @@ async function runAiAnalysis() {
 applyTheme(localStorage.getItem("agent-checker-theme") || "light");
 renderProviders();
 analyze();
+setActiveResultTab("policy");
