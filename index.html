@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI 员工入职体检器</title>
+    <title>AI 入职体检器</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="shell">
       <section class="workspace">
         <div class="intro">
-          <p class="kicker">Agent Onboarding Desk</p>
-          <h1>AI 员工入职体检器</h1>
+          <p class="kicker">Claude Code / Codex Onboarding Desk</p>
+          <h1>AI 入职体检器</h1>
           <p class="lead">
-            把一个准备交给 Agent 的任务丢进来，先看它需要什么权限、哪些动作必须审批、应该被放进怎样的工作间。
+            把准备交给 Claude Code 或 Codex 的任务丢进来，生成权限边界、人工确认点，以及真正会生效的配置和 hooks。
           </p>
         </div>
 
         <div class="task-panel">
-          <label for="taskInput">准备交给 Agent 的任务</label>
+          <label for="taskInput">任务描述</label>
           <textarea id="taskInput" spellcheck="false">帮我登录公司后台，导出本月客户数据，整理成表格，再发给销售群。</textarea>
           <div class="actions">
             <button id="analyzeBtn" type="button">体检任务</button>
@@ -31,7 +31,7 @@
             <span>入职流程</span>
             <strong id="handoffMode">本地规则</strong>
           </div>
-          <div class="handoff-steps" aria-label="Agent 入职流程">
+          <div class="handoff-steps" aria-label="Claude Code 和 Codex 入职流程">
             <button class="handoff-step" type="button" data-open-tab="permissions">
               <span>01</span>
               <strong>发工牌</strong>
@@ -53,7 +53,7 @@
         <article class="risk-card" id="riskCard">
           <p class="label">风险提醒</p>
           <div class="risk-score" id="riskScore">高风险</div>
-          <p id="riskReason">涉及账号、客户数据、文件导出和外部发送，Agent 不能直接裸跑。</p>
+          <p id="riskReason">涉及账号、客户数据、文件导出和外部发送，必须先设置沙箱、审批和审计边界。</p>
         </article>
       </section>
 
@@ -67,7 +67,7 @@
           </div>
           <div class="dock-actions">
             <button class="ghost" id="settingsBtn" type="button">模型设置</button>
-            <button class="ghost" id="themeToggleBtn" type="button" aria-pressed="false">深色</button>
+            <button class="ghost" id="themeToggleBtn" type="button" aria-label="切换到深色模式">深色</button>
           </div>
         </article>
 
@@ -90,9 +90,25 @@
               <span>结果工作台</span>
               <strong id="policyBadge">本地版</strong>
             </div>
-            <div class="install-actions" aria-label="复制项目安装命令">
-              <button class="ghost copy-panel-button" id="copyClaudeBtn" type="button">Claude</button>
-              <button class="ghost copy-panel-button" id="copyCodexBtn" type="button">Codex</button>
+            <div class="install-actions" aria-label="复制项目命令">
+              <div class="install-action">
+                <button class="ghost copy-panel-button" id="copyClaudeBtn" type="button" aria-describedby="claudeInstallInfo">
+                  复制 Claude Code 命令
+                </button>
+                <div class="copy-popover" id="claudeInstallInfo" role="tooltip">
+                  <strong>Claude Code 会生效的部分</strong>
+                  <ul id="claudeNotes"></ul>
+                </div>
+              </div>
+              <div class="install-action">
+                <button class="ghost copy-panel-button" id="copyCodexBtn" type="button" aria-describedby="codexInstallInfo">
+                  复制 Codex 命令
+                </button>
+                <div class="copy-popover" id="codexInstallInfo" role="tooltip">
+                  <strong>Codex 会生效的部分</strong>
+                  <ul id="codexNotes"></ul>
+                </div>
+              </div>
             </div>
           </div>
 
