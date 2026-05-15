@@ -639,13 +639,86 @@ button[data-state="error"] {
 }
 
 .workspace .risk-card {
-  margin-top: auto;
+  margin-top: 0;
   min-height: 148px;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
   padding: 18px;
   box-shadow: 8px 8px 0 var(--line);
+}
+
+.handoff-panel {
+  border: 2px solid var(--line);
+  padding: 16px;
+  background: var(--card);
+  box-shadow: 8px 8px 0 var(--soft-shadow);
+}
+
+.handoff-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--line);
+}
+
+.handoff-head span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.handoff-head strong {
+  color: var(--blue);
+  font-size: 14px;
+}
+
+.handoff-steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.handoff-step {
+  display: block;
+  min-height: 86px;
+  border: 2px solid color-mix(in srgb, var(--line) 76%, transparent);
+  padding: 10px;
+  color: var(--ink);
+  background: var(--pre);
+  box-shadow: none;
+  text-align: left;
+}
+
+.handoff-step:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 var(--soft-shadow);
+}
+
+.handoff-step span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.handoff-step strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.handoff-step small {
+  display: block;
+  margin-top: 4px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .risk-card .label {
@@ -932,8 +1005,14 @@ pre {
   }
 
   .workspace .risk-card {
+    flex: 0 0 auto;
     margin-top: 0;
     min-height: 180px;
+  }
+
+  .handoff-steps {
+    grid-template-columns: repeat(3, minmax(132px, 1fr));
+    overflow-x: auto;
   }
 
   .summary-strip {
@@ -966,6 +1045,95 @@ pre {
     padding: 22px;
     border-left: 0;
     box-shadow: none;
+  }
+}
+
+@media (min-width: 861px) and (max-height: 940px) {
+  .shell {
+    height: 100vh;
+    padding: 18px 0;
+  }
+
+  .workspace,
+  .board {
+    height: calc(100vh - 36px);
+  }
+
+  .workspace {
+    gap: 14px;
+  }
+
+  .intro {
+    padding: 20px;
+  }
+
+  .kicker {
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: clamp(38px, 4.6vw, 56px);
+  }
+
+  .lead {
+    margin-top: 12px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .task-panel {
+    padding: 14px;
+  }
+
+  #taskInput {
+    min-height: 104px;
+  }
+
+  textarea {
+    padding: 12px;
+  }
+
+  .actions {
+    margin-top: 12px;
+  }
+
+  .handoff-panel {
+    padding: 12px;
+  }
+
+  .handoff-steps {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .handoff-step {
+    min-height: 66px;
+    padding: 8px;
+  }
+
+  .handoff-step strong {
+    margin-top: 4px;
+    font-size: 14px;
+  }
+
+  .workspace .risk-card {
+    min-height: 110px;
+    padding: 14px;
+  }
+
+  .risk-score {
+    font-size: clamp(34px, 3.7vw, 46px);
+  }
+
+  .workspace #riskReason {
+    margin-top: 10px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .risk-toggle {
+    min-height: 30px;
+    margin-top: 10px;
   }
 }
 

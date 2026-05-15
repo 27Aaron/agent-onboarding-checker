@@ -12,6 +12,10 @@ const permissionCount = document.querySelector("#permissionCount");
 const approvalCount = document.querySelector("#approvalCount");
 const permissionPreview = document.querySelector("#permissionPreview");
 const approvalPreview = document.querySelector("#approvalPreview");
+const handoffMode = document.querySelector("#handoffMode");
+const handoffPermission = document.querySelector("#handoffPermission");
+const handoffApproval = document.querySelector("#handoffApproval");
+const handoffSandbox = document.querySelector("#handoffSandbox");
 const brief = document.querySelector("#brief");
 const policyBadge = document.querySelector("#policyBadge");
 const sandboxRules = document.querySelector("#sandboxRules");
@@ -169,6 +173,12 @@ const SYSTEM_PROMPT = `你是一名 AI Agent 安全入职官。请用中文分�
 {
   "riskLevel": "低风险 / 中风险 / 高风险 三选一",
   "riskReason": "一句话说明具体触发点",
+  "permissions": [
+    "这名 Agent 应该拿到的临时权限，3-5 条，越具体越好"
+  ],
+  "approvals": [
+    "必须暂停并请求人类确认的动作，3-5 条，越具体越好"
+  ],
   "workPolicy": [
     "写给 Agent 的工作制度，5-7 条，每条必须是可执行的制度"
   ],
@@ -184,6 +194,7 @@ const SYSTEM_PROMPT = `你是一名 AI Agent 安全入职官。请用中文分�
 - 不要建议用户把真实密钥、cookie、隐私数据直接交给 Agent
 - 不要鼓励绕过审批、删除日志、隐藏操作记录
 - 不要写“加强安全意识”这类空话，要写具体规则
+- permissions 和 approvals 不能照抄本地规则，要结合任务改写
 - 普通人要能看懂，但技术部分必须准确
 - 可以吸收本地规则，但不要机械重复`;
 
@@ -426,6 +437,13 @@ function updateSummaryPreviews(permissionItems, approvalItems) {
   approvalPreview.textContent = summarizeItem(approvalItems, "访问新网站或要求额外权限时停下来问人");
 }
 
+function updateHandoffSummary(source, permissionTotal, approvalTotal, sandboxLabel) {
+  handoffMode.textContent = source;
+  handoffPermission.textContent = `${permissionTotal} 项权限`;
+  handoffApproval.textContent = `${approvalTotal} 个确认点`;
+  handoffSandbox.textContent = sandboxLabel;
+}
+
 function setActiveResultTab(tab) {
   activeResultTab = tab;
   resultTabs.forEach((button) => {
@@ -505,6 +523,8 @@ function parseAiEnhancement(output) {
       rawText: String(output || "").trim(),
       riskLevel: "",
       riskReason: "",
+      permissions: [],
+      approvals: [],
       workPolicy: [],
       sandboxRules: [],
       hooks: [],
@@ -515,6 +535,8 @@ function parseAiEnhancement(output) {
     rawText: String(output || "").trim(),
     riskLevel: normalizeRiskLevel(data.riskLevel || data.level || data.risk),
     riskReason: String(data.riskReason || data.reason || data.summary || "").trim(),
+    permissions: toList(data.permissions || data.permissionItems || data.accessRules),
+    approvals: toList(data.approvals || data.approvalItems || data.confirmations),
     workPolicy: toList(data.workPolicy || data.policy || data.agentPolicy || data.brief),
     sandboxRules: toList(data.sandboxRules || data.sandbox || data.sandboxSuggestions),
     hooks: toList(data.hooks || data.hookRules || data.guardHooks),
@@ -549,18 +571,30 @@ function applyAiEnhancement(output) {
   const task = input.value.trim() || "未填写任务";
   const level = enhancement.riskLevel || riskScore.textContent;
   const reason = enhancement.riskReason || riskReason.textContent;
-  const localApprovals = [...approvals.querySelectorAll("li")].map((li) => li.textContent);
+  const finalPermissions = enhancement.permissions.length ? enhancement.permissions : getPanelItems(permissions);
+  const finalApprovals = enhancement.approvals.length ? enhancement.approvals : getPanelItems(approvals);
   const hasStructuredPolicy = enhancement.workPolicy.length > 0;
-  const hasStructuredContent = hasStructuredPolicy || enhancement.sandboxRules.length > 0 || enhancement.hooks.length > 0;
+  const hasStructuredContent =
+    hasStructuredPolicy ||
+    enhancement.permissions.length > 0 ||
+    enhancement.approvals.length > 0 ||
+    enhancement.sandboxRules.length > 0 ||
+    enhancement.hooks.length > 0;
 
   applyRiskResult(level, reason);
+  renderList(permissions, finalPermissions);
+  renderList(approvals, finalApprovals);
+  permissionCount.textContent = `${finalPermissions.length} 项`;
+  approvalCount.textContent = `${finalApprovals.length} 项`;
+  updateSummaryPreviews(finalPermissions, finalApprovals);
+
   brief.textContent = formatPolicyBrief({
     title: hasStructuredContent ? "AI 员工工作制度" : "AI 补充后的工作制度",
     task,
     level,
     reason,
     workPolicy: enhancement.workPolicy,
-    approvals: localApprovals,
+    approvals: finalApprovals,
     rawText: hasStructuredPolicy ? "" : enhancement.rawText,
   });
   policyBadge.textContent = hasStructuredContent ? "AI 写入" : "AI 原文";
@@ -576,6 +610,8 @@ function applyAiEnhancement(output) {
     renderList(hooks, enhancement.hooks);
     hookCount.textContent = `${enhancement.hooks.length} 个`;
   }
+
+  updateHandoffSummary("AI 写入", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
 
   return hasStructuredContent;
 }
@@ -616,6 +652,7 @@ function analyze() {
   sandboxLevel.textContent = sandboxModeForRisk(level);
   hookCount.textContent = `${hookItems.length} 个`;
   policyBadge.textContent = "本地版";
+  updateHandoffSummary("本地规则", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
 
   brief.textContent = formatPolicyBrief({
     title: "AI 员工入职说明",
