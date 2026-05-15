@@ -235,8 +235,21 @@ const rules = [
   },
 ];
 
-const codeSample = "帮我修复这个仓库里的登录 bug，允许运行测试和改代码，但不要修改 .env，不要直接 git push。";
-const dataSample = "帮我登录公司后台，导出本月客户数据，整理成表格，再发给销售群。";
+const taskSamples = [
+  "帮我登录公司后台，导出本月客户数据，整理成表格，再发给销售群。",
+  "帮我修复这个仓库里的登录 bug，允许运行测试和改代码，但不要修改 .env，不要直接 git push。",
+  "帮我打开竞品官网和定价页，截图记录差异，整理成一份产品对比文档。",
+  "帮我登录邮箱，筛选最近一周的客户投诉邮件，汇总高频问题并草拟回复。",
+  "帮我读取这份订单表格，找出退款率异常的客户和产品，生成一份内部分析报告。",
+  "帮我把会议录音整理成纪要，更新到飞书文档，并发到项目群里。",
+  "帮我清理项目文件夹，删除重复截图和过期导出文件，只保留最新版本。",
+  "帮我修改网站首页文案，跑完测试后提交 PR，但不要碰支付和登录相关代码。",
+  "帮我进入云控制台查看线上日志，定位 500 报错原因，并给出回滚建议。",
+  "帮我抓取今天 X、Reddit 和即刻上关于 AI Agent 的热门讨论，写成公众号选题备忘。",
+  "帮我连接数据库导出流失用户名单，按城市和付费档位分组，发给运营同事。",
+  "帮我检查 CI 配置，修掉构建失败的问题，并把变更说明写进 PR 描述。",
+];
+let sampleIndex = 0;
 
 promptInput.value = SYSTEM_PROMPT;
 
@@ -250,6 +263,10 @@ function hasModelConfig() {
 
 function updatePrimaryButtonLabel() {
   analyzeBtn.textContent = hasModelConfig() ? "AI 深度体检" : "体检任务";
+}
+
+function updateSampleButtonLabel() {
+  sampleBtn.textContent = `换个案例 ${sampleIndex + 1}/${taskSamples.length}`;
 }
 
 function getApiKeyCacheKey(providerId) {
@@ -670,7 +687,10 @@ analyzeBtn.addEventListener("click", () => {
   analyze();
 });
 sampleBtn.addEventListener("click", () => {
-  input.value = input.value === codeSample ? dataSample : codeSample;
+  const currentIndex = taskSamples.findIndex((sample) => sample === input.value.trim());
+  sampleIndex = currentIndex >= 0 ? (currentIndex + 1) % taskSamples.length : (sampleIndex + 1) % taskSamples.length;
+  input.value = taskSamples[sampleIndex];
+  updateSampleButtonLabel();
   analyze();
 });
 resultTabs.forEach((button) => {
@@ -1304,5 +1324,6 @@ async function runAiAnalysis() {
 
 applyTheme(localStorage.getItem("agent-checker-theme") || "light");
 renderProviders();
+updateSampleButtonLabel();
 analyze();
 setActiveResultTab("policy");
