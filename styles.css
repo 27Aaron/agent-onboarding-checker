@@ -280,7 +280,7 @@ h2 {
 }
 
 .api-grid {
-  grid-template-columns: 1.3fr 0.7fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 label,
@@ -330,69 +330,115 @@ select {
   padding-right: 34px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 #baseUrlInput,
 #modelInput {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
 }
 
+.select-field,
 .model-field {
   position: relative;
 }
 
+.select-combo,
 .model-combo {
   position: relative;
   margin-top: 8px;
 }
 
-.model-combo input {
-  margin-top: 0;
-  padding-right: 54px;
-}
-
-.model-menu-button {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 44px;
+.select-trigger,
+.model-combo {
+  width: 100%;
   min-height: 44px;
-  padding: 0;
-  border-width: 2px;
-  border-left-width: 2px;
-  color: var(--line);
-  background: var(--card);
+  border: 2px solid var(--line);
+  color: var(--ink);
+  background: var(--field);
   box-shadow: none;
 }
 
-.model-menu-button:hover {
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 14px;
+  text-align: left;
+  font: 15px "Avenir Next", "PingFang SC", sans-serif;
+}
+
+.select-trigger:hover,
+.model-menu-button:hover,
+.select-option:hover,
+.model-option:hover {
   transform: none;
   box-shadow: none;
 }
 
-.model-menu-button::before {
-  position: absolute;
-  top: 17px;
-  left: 15px;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid var(--line);
-  border-bottom: 2px solid var(--line);
-  transform: rotate(45deg);
-  content: "";
+.select-trigger:focus-visible,
+.model-combo:focus-within {
+  box-shadow: 0 0 0 4px rgba(47, 103, 216, 0.18);
 }
 
-.model-menu-button[aria-expanded="true"]::before {
-  top: 21px;
-  transform: rotate(225deg);
+.model-combo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 50px;
 }
 
+.model-combo input {
+  height: 40px;
+  margin-top: 0;
+  border: 0;
+  padding: 0 14px;
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+}
+
+.model-combo input:focus {
+  box-shadow: none;
+}
+
+.model-menu-button {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  min-height: 40px;
+  border: 0;
+  border-left: 2px solid var(--line);
+  padding: 0;
+  color: var(--line);
+  background: transparent;
+  box-shadow: none;
+}
+
+.combo-caret {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-right: 7px solid transparent;
+  border-left: 7px solid transparent;
+  border-top: 8px solid var(--line);
+  transition: transform 140ms ease;
+}
+
+.select-trigger[aria-expanded="true"] .combo-caret,
+.model-menu-button[aria-expanded="true"] .combo-caret {
+  transform: rotate(180deg);
+}
+
+.select-menu,
 .model-menu {
   position: absolute;
-  top: 50px;
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
   z-index: 4;
-  max-height: 230px;
+  max-height: 260px;
   overflow: auto;
   border: 2px solid var(--line);
   background: var(--card);
@@ -400,23 +446,42 @@ select {
   box-shadow: 6px 6px 0 var(--soft-shadow);
 }
 
+.select-menu[hidden],
 .model-menu[hidden] {
   display: none;
 }
 
+.select-group {
+  padding: 9px 10px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.select-option,
 .model-option {
   display: block;
   width: 100%;
-  min-height: 36px;
+  min-height: 38px;
   border: 0;
   padding: 0 10px;
   color: var(--ink);
   background: transparent;
   box-shadow: none;
   text-align: left;
+}
+
+.select-option {
+  font: 15px "Avenir Next", "PingFang SC", sans-serif;
+}
+
+.model-option {
   font: 13px "SFMono-Regular", Consolas, monospace;
 }
 
+.select-option:hover,
+.select-option:focus,
+.select-option[aria-selected="true"],
 .model-option:hover,
 .model-option:focus,
 .model-option[aria-selected="true"] {

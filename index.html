@@ -116,9 +116,23 @@
             兼容 OpenAI 协议的服务基本都可以接。常规模型 API 和 Coding Plan 分开列出；选服务商、填 Key 后会自动拉模型列表，拉不到就手动填模型名。
           </p>
           <div class="provider-grid">
-            <label>
+            <label class="select-field">
               服务商
-              <select id="providerSelect"></select>
+              <div class="select-combo">
+                <button
+                  class="select-trigger"
+                  id="providerTrigger"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-controls="providerMenu"
+                  aria-expanded="false"
+                >
+                  <span id="providerTriggerText">OpenAI 官方</span>
+                  <span class="combo-caret" aria-hidden="true"></span>
+                </button>
+                <div class="select-menu" id="providerMenu" role="listbox" hidden></div>
+                <select id="providerSelect" hidden></select>
+              </div>
             </label>
             <label>
               Base URL
@@ -143,13 +157,15 @@
                   aria-expanded="false"
                 />
                 <button
-                  class="ghost model-menu-button"
+                  class="model-menu-button"
                   id="modelMenuBtn"
                   type="button"
                   aria-label="展开模型列表"
                   aria-controls="modelMenu"
                   aria-expanded="false"
-                ></button>
+                >
+                  <span class="combo-caret" aria-hidden="true"></span>
+                </button>
                 <div class="model-menu" id="modelMenu" role="listbox" hidden></div>
               </div>
             </label>

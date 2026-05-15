@@ -15,6 +15,9 @@ const hooks = document.querySelector("#hooks");
 const hookCount = document.querySelector("#hookCount");
 const promptInput = document.querySelector("#promptInput");
 const providerSelect = document.querySelector("#providerSelect");
+const providerTrigger = document.querySelector("#providerTrigger");
+const providerTriggerText = document.querySelector("#providerTriggerText");
+const providerMenu = document.querySelector("#providerMenu");
 const baseUrlInput = document.querySelector("#baseUrlInput");
 const providerBadge = document.querySelector("#providerBadge");
 const settingsProviderBadge = document.querySelector("#settingsProviderBadge");
@@ -225,10 +228,11 @@ function updateProviderBadges(suffix = "") {
 function openSettings(focusNode) {
   settingsOverlay.hidden = false;
   document.body.classList.add("settings-open");
-  window.setTimeout(() => (focusNode || providerSelect).focus(), 0);
+  window.setTimeout(() => (focusNode || providerTrigger).focus(), 0);
 }
 
 function closeSettings() {
+  hideProviderMenu();
   hideModelMenu();
   settingsOverlay.hidden = true;
   document.body.classList.remove("settings-open");
@@ -262,6 +266,7 @@ function renderProviders() {
     }
     groups.get(provider.group).appendChild(option);
   });
+  renderProviderMenu();
   applyProvider("openai");
 }
 
@@ -274,6 +279,7 @@ function applyProvider(providerId) {
   providerSelect.value = provider.id;
   baseUrlInput.value = provider.baseUrl;
   modelInput.value = provider.model;
+  updateProviderTrigger();
   updateProviderBadges();
   clearModelOptions();
   if (provider.id === "custom") {
@@ -394,6 +400,39 @@ sampleBtn.addEventListener("click", () => {
   analyze();
 });
 providerSelect.addEventListener("change", () => applyProvider(providerSelect.value));
+providerTrigger.addEventListener("click", () => {
+  if (providerMenu.hidden) {
+    showProviderMenu();
+    return;
+  }
+  hideProviderMenu();
+});
+providerTrigger.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    showProviderMenu();
+    focusProviderOption(1);
+  }
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    hideProviderMenu();
+  }
+});
+providerMenu.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    focusProviderOption(1);
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    focusProviderOption(-1);
+  }
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    hideProviderMenu();
+    providerTrigger.focus();
+  }
+});
 baseUrlInput.addEventListener("input", () => {
   if (providerSelect.value !== "custom") {
     updateProviderBadges(" · 已改");
@@ -458,10 +497,11 @@ settingsOverlay.addEventListener("click", (event) => {
   if (event.target === settingsOverlay) closeSettings();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !modelMenu.hidden) return;
+  if (event.key === "Escape" && (!modelMenu.hidden || !providerMenu.hidden)) return;
   if (event.key === "Escape" && !settingsOverlay.hidden) closeSettings();
 });
 document.addEventListener("click", (event) => {
+  if (!event.target.closest(".select-field")) hideProviderMenu();
   if (!event.target.closest(".model-field")) hideModelMenu();
 });
 themeToggleBtn.addEventListener("click", () => {
@@ -535,6 +575,77 @@ function parseModelIds(data) {
   );
 }
 
+function renderProviderMenu() {
+  providerMenu.innerHTML = "";
+  let currentGroup = "";
+
+  providers.forEach((provider) => {
+    if (provider.group !== "自定义" && provider.group !== currentGroup) {
+      currentGroup = provider.group;
+      const group = document.createElement("div");
+      group.className = "select-group";
+      group.textContent = currentGroup;
+      providerMenu.appendChild(group);
+    }
+
+    if (provider.group === "自定义" && currentGroup !== "自定义") {
+      currentGroup = "自定义";
+      const group = document.createElement("div");
+      group.className = "select-group";
+      group.textContent = "自定义";
+      providerMenu.appendChild(group);
+    }
+
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "select-option";
+    option.dataset.providerId = provider.id;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(provider.id === providerSelect.value));
+    option.textContent = provider.name;
+    option.addEventListener("mousedown", (event) => event.preventDefault());
+    option.addEventListener("click", () => selectProvider(provider.id));
+    providerMenu.appendChild(option);
+  });
+}
+
+function updateProviderTrigger() {
+  const provider = getProvider();
+  providerTriggerText.textContent = provider.name;
+  [...providerMenu.querySelectorAll(".select-option")].forEach((option) => {
+    option.setAttribute("aria-selected", String(option.dataset.providerId === providerSelect.value));
+  });
+}
+
+function showProviderMenu() {
+  hideModelMenu();
+  renderProviderMenu();
+  updateProviderTrigger();
+  providerMenu.hidden = false;
+  providerTrigger.setAttribute("aria-expanded", "true");
+}
+
+function hideProviderMenu() {
+  providerMenu.hidden = true;
+  providerTrigger.setAttribute("aria-expanded", "false");
+}
+
+function selectProvider(id) {
+  hideProviderMenu();
+  applyProvider(id);
+  if (id !== "custom") providerTrigger.focus();
+}
+
+function focusProviderOption(direction) {
+  const options = [...providerMenu.querySelectorAll(".select-option")];
+  if (!options.length) return;
+  const currentIndex = options.indexOf(document.activeElement);
+  const nextIndex = currentIndex === -1
+    ? direction > 0 ? 0 : options.length - 1
+    : (currentIndex + direction + options.length) % options.length;
+  options[nextIndex].focus();
+}
+
 function renderModelMenu(options = {}) {
   const shouldFilter = options.filter === true;
   const query = modelInput.value.trim().toLowerCase();
@@ -581,6 +692,7 @@ function renderModelMenu(options = {}) {
 }
 
 function showModelMenu(options = {}) {
+  hideProviderMenu();
   renderModelMenu(options);
   modelMenu.hidden = false;
   modelInput.setAttribute("aria-expanded", "true");
