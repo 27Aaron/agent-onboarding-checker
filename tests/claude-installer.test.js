@@ -255,6 +255,10 @@ test("framed surfaces use shared balanced spacing tokens", () => {
   assert.match(cssSource, /--surface-pad:\s*18px/);
   assert.match(cssSource, /--hero-pad:\s*24px/);
   assert.match(cssSource, /--field-pad:\s*16px/);
+  assert.match(cssSource, /--panel:\s*#fffaf0/);
+  assert.match(cssSource, /--card:\s*#fffaf0/);
+  assert.match(cssSource, /--field:\s*#fffaf0/);
+  assert.match(cssSource, /--pre:\s*#fffaf0/);
 
   assertRuleHas(".intro", "padding:\\s*var\\(--hero-pad\\)");
   assertRuleHas(".task-panel", "padding:\\s*var\\(--surface-pad\\)");
