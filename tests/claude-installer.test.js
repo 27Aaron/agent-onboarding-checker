@@ -64,6 +64,24 @@ test("installer UI offers Claude Code and Codex project setup commands", () => {
   assert.equal(appSource.includes("buildCodexConfigToml"), true);
 });
 
+test("install command copy is disabled until an inspection result exists", () => {
+  const copySource = extractFunctionSource("copyInstallCommand");
+
+  assert.match(htmlSource, /id="copyClaudeBtn"[\s\S]*disabled/);
+  assert.match(htmlSource, /id="copyCodexBtn"[\s\S]*disabled/);
+  assert.match(appSource, /function setInstallCopyEnabled/);
+  assert.match(appSource, /function isInspectionReady/);
+  assert.match(appSource, /copyClaudeBtn\.disabled = !enabled/);
+  assert.match(appSource, /copyCodexBtn\.disabled = !enabled/);
+  assert.match(copySource, /if \(!isInspectionReady\(\)\)/);
+  assert.match(copySource, /先点击「体检任务」/);
+  assert.match(appSource, /resetResultWorkspaceForSample[\s\S]*setInstallCopyEnabled\(false\)/);
+  assert.match(appSource, /setAiAnalysisPendingState[\s\S]*setInstallCopyEnabled\(false\)/);
+  assert.match(appSource, /applyKeywordInspectionResult[\s\S]*setInstallCopyEnabled\(true\)/);
+  assert.match(appSource, /applyCuratedInspectionResult[\s\S]*setInstallCopyEnabled\(true\)/);
+  assert.match(appSource, /applyAiEnhancement[\s\S]*setInstallCopyEnabled\(true\)/);
+});
+
 test("page copy is specific to Claude Code and Codex", () => {
   assert.match(htmlSource, /<title>AI 入职体检器<\/title>/);
   assert.match(htmlSource, /<h1>AI 入职体检器<\/h1>/);
@@ -376,6 +394,18 @@ test("Claude settings cover approval, prompt expansion, web search, and hook egr
   assert.match(hookSource, /protected_config_write_patterns/);
 });
 
+test("Claude hooks use a shell wrapper instead of a bare project-dir placeholder command", () => {
+  const settingsSource = extractFunctionSource("buildClaudeSettings");
+
+  assert.match(settingsSource, /function claudeGuardHook/);
+  assert.match(settingsSource, /command:\s*"bash"/);
+  assert.match(settingsSource, /args:\s*\[/);
+  assert.match(settingsSource, /CLAUDE_PROJECT_DIR/);
+  assert.match(settingsSource, /git rev-parse --show-toplevel/);
+  assert.match(settingsSource, /agent-guard\.sh/);
+  assert.doesNotMatch(settingsSource, /command:\s*"\$\{CLAUDE_PROJECT_DIR\}\/\.claude\/hooks\/agent-guard\.sh"/);
+});
+
 test("Claude settings mirror generated high-risk command boundaries", () => {
   const settingsSource = extractFunctionSource("buildClaudeSettings");
   for (const rule of [
@@ -471,6 +501,28 @@ test("project instructions are tool-specific instead of mixing Claude and Codex 
   assert.match(claudeSource, /buildClaudeHookRules/);
   assert.match(codexSource, /buildCodexSandboxRules/);
   assert.match(codexSource, /buildCodexHookRules/);
+});
+
+test("project instruction markdown stays compact and removes repeated tool prefixes", () => {
+  const claudeSource = extractFunctionSource("buildClaudeMdSection");
+  const codexSource = extractFunctionSource("buildCodexAgentsSection");
+
+  assert.match(appSource, /function buildProjectWorkPolicy/);
+  assert.match(appSource, /function projectDocItems/);
+  assert.doesNotMatch(claudeSource, /"### 当前任务"/);
+  assert.doesNotMatch(claudeSource, /"### 风险判断"/);
+  assert.doesNotMatch(codexSource, /"### 当前任务"/);
+  assert.doesNotMatch(codexSource, /"### 风险判断"/);
+  assert.match(claudeSource, /buildProjectWorkPolicy\(\)/);
+  assert.match(codexSource, /buildProjectWorkPolicy\(\)/);
+  assert.match(claudeSource, /markdownList\("生效边界"/);
+  assert.match(codexSource, /markdownList\("生效边界"/);
+  assert.match(claudeSource, /projectDocItems\(buildClaudeSandboxRules/);
+  assert.match(claudeSource, /projectDocItems\(buildClaudeHookRules/);
+  assert.match(codexSource, /projectDocItems\(buildCodexSandboxRules/);
+  assert.match(codexSource, /projectDocItems\(buildCodexHookRules/);
+  assert.match(claudeSource, /markdownList\("交付前自检", DELIVERY_CHECKLIST\)/);
+  assert.match(codexSource, /markdownList\("交付前自检", DELIVERY_CHECKLIST\)/);
 });
 
 test("Codex config uses real sandbox, approval, permissions, and hooks keys", () => {

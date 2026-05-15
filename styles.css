@@ -583,6 +583,14 @@ button:hover {
   box-shadow: var(--button-shadow-hover);
 }
 
+button:disabled,
+button:disabled:hover {
+  transform: none;
+  opacity: 0.52;
+  cursor: not-allowed;
+  box-shadow: var(--button-shadow);
+}
+
 .ghost {
   color: var(--line);
   background: var(--card);

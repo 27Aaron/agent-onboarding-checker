@@ -621,6 +621,22 @@ function updatePrimaryButtonLabel() {
   analyzeBtn.textContent = hasModelConfig() ? "AI 深度体检" : "体检任务";
 }
 
+function isInspectionReady() {
+  const status = policyBadge.textContent.trim();
+  return !riskCard.classList.contains("pending") && status !== "待体检" && !status.includes("生成中");
+}
+
+function setInstallCopyEnabled(enabled) {
+  const disabledReason = "先点击「体检任务」，生成规则后再复制命令";
+  const readyReason = "复制当前体检结果对应的项目命令";
+  copyClaudeBtn.disabled = !enabled;
+  copyCodexBtn.disabled = !enabled;
+  [copyClaudeBtn, copyCodexBtn].forEach((button) => {
+    button.setAttribute("aria-disabled", String(!enabled));
+    button.title = enabled ? readyReason : disabledReason;
+  });
+}
+
 function updateSampleButtonLabel() {
   sampleBtn.textContent = "换个案例";
 }
@@ -851,6 +867,17 @@ function getPanelItems(node) {
   return [...node.querySelectorAll("li")].map((li) => li.textContent.trim()).filter(Boolean);
 }
 
+function removeToolNamePrefix(item, toolName) {
+  return String(item || "")
+    .replace(new RegExp(`^${toolName}\\s*[：:]\\s*`), "")
+    .replace(new RegExp(`^${toolName}\\s+`), "")
+    .trim();
+}
+
+function projectDocItems(items, toolName) {
+  return items.map((item) => removeToolNamePrefix(item, toolName));
+}
+
 function summarizeItem(items, fallback) {
   return items[0] || fallback;
 }
@@ -924,6 +951,7 @@ function resetResultWorkspaceForSample({ isRandomSample = false } = {}) {
   hookCount.textContent = "待生成";
   policyBadge.textContent = "待体检";
   updateHandoffSummary("待体检", null, null, "待生成");
+  setInstallCopyEnabled(false);
   brief.textContent = [
     introLine,
     "",
@@ -1047,6 +1075,7 @@ function applyCuratedInspectionResult(result) {
   policyBadge.textContent = "精选版";
   updateSummaryPreviews(finalPermissions, finalApprovals);
   updateHandoffSummary("精选案例", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
+  setInstallCopyEnabled(true);
 
   brief.textContent = formatPolicyBrief({
     title: "Claude Code / Codex 精选案例入职说明",
@@ -1105,6 +1134,7 @@ function applyKeywordInspectionResult(result) {
   hookCount.textContent = `${result.hooks.length} 个`;
   policyBadge.textContent = "本地版";
   updateHandoffSummary("本地规则", result.permissions.length, result.approvals.length, sandboxLevel.textContent);
+  setInstallCopyEnabled(true);
 
   brief.textContent = formatPolicyBrief({
     title: "Claude Code / Codex 入职说明",
@@ -1136,6 +1166,7 @@ function setAiAnalysisPendingState(baseUrl) {
   sandboxLevel.textContent = "生成中";
   hookCount.textContent = "生成中";
   updateHandoffSummary("AI 生成中", null, null, "生成中");
+  setInstallCopyEnabled(false);
   brief.textContent = [
     "AI 正在体检当前任务。",
     "",
@@ -1200,6 +1231,7 @@ function applyAiEnhancement(output, fallbackResult = buildKeywordInspectionResul
   }
 
   updateHandoffSummary("AI 写入", finalPermissions.length, finalApprovals.length, sandboxLevel.textContent);
+  setInstallCopyEnabled(true);
 
   return hasStructuredContent;
 }
@@ -1509,6 +1541,16 @@ function buildToolPolicyBrief(toolName) {
   });
 }
 
+function buildProjectWorkPolicy() {
+  const task = input.value.trim() || "未填写任务";
+  const level = riskScore.textContent.trim() || "未判断";
+  const reason = riskReason.textContent.trim();
+  const lines = [`任务：${task}`, `风险等级：${level}`];
+  if (reason) lines.push(`判断：${reason}`);
+  lines.push("", ...BASE_WORK_POLICY.map((item) => `- ${item}`));
+  return lines.join("\n");
+}
+
 function buildAiInput() {
   return [
     "任务",
@@ -1539,74 +1581,71 @@ function markdownList(title, items, fallbackItems = []) {
 function buildClaudeMdSection() {
   const permissionItems = getPanelItems(permissions);
   const approvalItems = getPanelItems(approvals);
-  const claudeItems = getPanelItems(claudeNotes);
-  const sandboxItems = buildClaudeSandboxRules(riskScore.textContent.trim(), input.value.trim());
-  const hookItems = buildClaudeHookRules(input.value.trim());
+  const claudeItems = projectDocItems(getPanelItems(claudeNotes), "Claude Code");
+  const sandboxItems = projectDocItems(buildClaudeSandboxRules(riskScore.textContent.trim(), input.value.trim()), "Claude Code");
+  const hookItems = projectDocItems(buildClaudeHookRules(input.value.trim()), "Claude Code");
   return [
-    "<!-- AGENT_ONBOARDING_CHECKER_START -->",
     "## Claude Code 入职规则",
     "",
     "> 由 Agent Onboarding Checker 生成。把这里当作当前项目的 Claude Code 上岗说明。",
     "",
-    "### 当前任务",
-    input.value.trim() || "未填写任务",
-    "",
-    "### 风险判断",
-    `- 风险等级：${riskScore.textContent.trim() || "未判断"}`,
-    `- 判断：${riskReason.textContent.trim() || "暂无判断"}`,
-    "",
     "### 工作制度",
-    buildToolPolicyBrief("Claude Code"),
+    buildProjectWorkPolicy(),
     "",
-    markdownList("Claude Code 生效边界", claudeItems, ["CLAUDE.md 只提供上下文，真正生效的限制在 .claude/settings.json 和 hook 脚本中"]),
+    markdownList("生效边界", claudeItems, ["CLAUDE.md 只提供上下文，真正生效的限制在 .claude/settings.json 和 hook 脚本中"]),
     "",
     markdownList("权限边界", permissionItems, ["默认只给任务所需的最小权限"]),
     "",
     markdownList("必须人工确认", approvalItems, ["导出、删除、发送、发布、登录授权前必须确认"]),
     "",
+    markdownList("交付前自检", DELIVERY_CHECKLIST),
+    "",
     markdownList("沙箱原则", sandboxItems, ["文件写入限制在当前项目目录或临时输出目录"]),
     "",
     markdownList("Hooks 门卫", hookItems, ["高风险命令、密钥文件和外部发送动作需要拦截或确认"]),
-    "<!-- AGENT_ONBOARDING_CHECKER_END -->",
   ].join("\n");
 }
 
 function buildCodexAgentsSection() {
   const permissionItems = getPanelItems(permissions);
   const approvalItems = getPanelItems(approvals);
-  const codexItems = getPanelItems(codexNotes);
-  const sandboxItems = buildCodexSandboxRules(riskScore.textContent.trim(), input.value.trim());
-  const hookItems = buildCodexHookRules(input.value.trim());
+  const codexItems = projectDocItems(getPanelItems(codexNotes), "Codex");
+  const sandboxItems = projectDocItems(buildCodexSandboxRules(riskScore.textContent.trim(), input.value.trim()), "Codex");
+  const hookItems = projectDocItems(buildCodexHookRules(input.value.trim()), "Codex");
   return [
-    "<!-- AGENT_ONBOARDING_CHECKER_START -->",
     "## Codex 入职规则",
     "",
     "> 由 Agent Onboarding Checker 生成。把这里当作当前项目的 Codex 上岗说明。",
     "",
-    "### 当前任务",
-    input.value.trim() || "未填写任务",
-    "",
-    "### 风险判断",
-    `- 风险等级：${riskScore.textContent.trim() || "未判断"}`,
-    `- 判断：${riskReason.textContent.trim() || "暂无判断"}`,
-    "",
     "### 工作制度",
-    buildToolPolicyBrief("Codex"),
+    buildProjectWorkPolicy(),
     "",
-    markdownList("Codex 生效边界", codexItems, ["AGENTS.md 只提供模型指令，真正生效的限制在 .codex/config.toml、sandbox、approval 和 hook 中"]),
+    markdownList("生效边界", codexItems, ["AGENTS.md 只提供模型指令，真正生效的限制在 .codex/config.toml、sandbox、approval 和 hook 中"]),
     "",
     markdownList("权限边界", permissionItems, ["默认只给任务所需的最小权限"]),
     "",
     markdownList("必须人工确认", approvalItems, ["导出、删除、发送、发布、登录授权前必须确认"]),
     "",
+    markdownList("交付前自检", DELIVERY_CHECKLIST),
+    "",
     markdownList("沙箱原则", sandboxItems, ["Codex 使用 workspace-write + on-request，超出边界时走审批"]),
     "",
     markdownList("Hooks 门卫", hookItems, ["高风险命令、密钥文件和外部发送动作需要拦截或确认"]),
-    "<!-- AGENT_ONBOARDING_CHECKER_END -->",
   ].join("\n");
 }
 
 function buildClaudeSettings() {
+  function claudeGuardHook() {
+    return {
+      type: "command",
+      command: "bash",
+      args: [
+        "-lc",
+        'project_dir="${CLAUDE_PROJECT_DIR:-}"; if [ -z "$project_dir" ]; then project_dir="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"; fi; exec "$project_dir/.claude/hooks/agent-guard.sh"',
+      ],
+    };
+  }
+
   return JSON.stringify(
     {
       $schema: "https://json.schemastore.org/claude-code-settings.json",
@@ -1778,43 +1817,23 @@ function buildClaudeSettings() {
         PreToolUse: [
           {
             matcher: "Bash|Read|Edit|Write|MultiEdit|WebFetch|WebSearch|Glob|Grep",
-            hooks: [
-              {
-                type: "command",
-                command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.sh",
-              },
-            ],
+            hooks: [claudeGuardHook()],
           },
         ],
         PermissionRequest: [
           {
             matcher: "Bash|Read|Edit|Write|MultiEdit|WebFetch|WebSearch|Glob|Grep",
-            hooks: [
-              {
-                type: "command",
-                command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.sh",
-              },
-            ],
+            hooks: [claudeGuardHook()],
           },
         ],
         UserPromptSubmit: [
           {
-            hooks: [
-              {
-                type: "command",
-                command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.sh",
-              },
-            ],
+            hooks: [claudeGuardHook()],
           },
         ],
         UserPromptExpansion: [
           {
-            hooks: [
-              {
-                type: "command",
-                command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.sh",
-              },
-            ],
+            hooks: [claudeGuardHook()],
           },
         ],
       },
@@ -2486,13 +2505,21 @@ function buildClaudeProjectSetupScript() {
     "",
     "replace_or_append_section() {",
     "  file=\"$1\"",
-    "  start_marker=\"$2\"",
-    "  end_marker=\"$3\"",
-    "  section_file=\"$4\"",
-    "  if [ -f \"$file\" ] && grep -Fq \"$start_marker\" \"$file\"; then",
-    "    awk -v start=\"$start_marker\" -v end=\"$end_marker\" -v section=\"$section_file\" '",
+    "  heading=\"$2\"",
+    "  section_file=\"$3\"",
+    "  legacy_start_marker=\"$4\"",
+    "  legacy_end_marker=\"$5\"",
+    "  if [ -f \"$file\" ] && grep -Fq \"$legacy_start_marker\" \"$file\"; then",
+    "    awk -v start=\"$legacy_start_marker\" -v end=\"$legacy_end_marker\" -v section=\"$section_file\" '",
     "      $0 == start { while ((getline line < section) > 0) print line; skipping=1; next }",
     "      $0 == end { skipping=0; next }",
+    "      !skipping { print }",
+    "    ' \"$file\" > \"$file.tmp.$$\"",
+    "    mv \"$file.tmp.$$\" \"$file\"",
+    "  elif [ -f \"$file\" ] && grep -Fxq \"$heading\" \"$file\"; then",
+    "    awk -v heading=\"$heading\" -v section=\"$section_file\" '",
+    "      $0 == heading && !replaced { while ((getline line < section) > 0) print line; skipping=1; replaced=1; next }",
+    "      skipping && /^##[[:space:]]/ { skipping=0 }",
     "      !skipping { print }",
     "    ' \"$file\" > \"$file.tmp.$$\"",
     "    mv \"$file.tmp.$$\" \"$file\"",
@@ -2508,7 +2535,7 @@ function buildClaudeProjectSetupScript() {
     "cat > \"$section_file\" <<'AGENT_ONBOARDING_CLAUDE'",
     claudeSection,
     "AGENT_ONBOARDING_CLAUDE",
-    "replace_or_append_section CLAUDE.md '<!-- AGENT_ONBOARDING_CHECKER_START -->' '<!-- AGENT_ONBOARDING_CHECKER_END -->' \"$section_file\"",
+    "replace_or_append_section CLAUDE.md '## Claude Code 入职规则' \"$section_file\" '<!-- AGENT_ONBOARDING_CHECKER_START -->' '<!-- AGENT_ONBOARDING_CHECKER_END -->'",
     "rm -f \"$section_file\"",
     "",
     "settings_file=\"$(mktemp)\"",
@@ -2596,13 +2623,21 @@ function buildCodexProjectSetupScript() {
     "",
     "replace_or_append_section() {",
     "  file=\"$1\"",
-    "  start_marker=\"$2\"",
-    "  end_marker=\"$3\"",
-    "  section_file=\"$4\"",
-    "  if [ -f \"$file\" ] && grep -Fq \"$start_marker\" \"$file\"; then",
-    "    awk -v start=\"$start_marker\" -v end=\"$end_marker\" -v section=\"$section_file\" '",
+    "  heading=\"$2\"",
+    "  section_file=\"$3\"",
+    "  legacy_start_marker=\"$4\"",
+    "  legacy_end_marker=\"$5\"",
+    "  if [ -f \"$file\" ] && grep -Fq \"$legacy_start_marker\" \"$file\"; then",
+    "    awk -v start=\"$legacy_start_marker\" -v end=\"$legacy_end_marker\" -v section=\"$section_file\" '",
     "      $0 == start { while ((getline line < section) > 0) print line; skipping=1; next }",
     "      $0 == end { skipping=0; next }",
+    "      !skipping { print }",
+    "    ' \"$file\" > \"$file.tmp.$$\"",
+    "    mv \"$file.tmp.$$\" \"$file\"",
+    "  elif [ -f \"$file\" ] && grep -Fxq \"$heading\" \"$file\"; then",
+    "    awk -v heading=\"$heading\" -v section=\"$section_file\" '",
+    "      $0 == heading && !replaced { while ((getline line < section) > 0) print line; skipping=1; replaced=1; next }",
+    "      skipping && /^##[[:space:]]/ { skipping=0 }",
     "      !skipping { print }",
     "    ' \"$file\" > \"$file.tmp.$$\"",
     "    mv \"$file.tmp.$$\" \"$file\"",
@@ -2636,7 +2671,7 @@ function buildCodexProjectSetupScript() {
     "cat > \"$section_file\" <<'AGENT_ONBOARDING_AGENTS'",
     agentsSection,
     "AGENT_ONBOARDING_AGENTS",
-    "replace_or_append_section AGENTS.md '<!-- AGENT_ONBOARDING_CHECKER_START -->' '<!-- AGENT_ONBOARDING_CHECKER_END -->' \"$section_file\"",
+    "replace_or_append_section AGENTS.md '## Codex 入职规则' \"$section_file\" '<!-- AGENT_ONBOARDING_CHECKER_START -->' '<!-- AGENT_ONBOARDING_CHECKER_END -->'",
     "rm -f \"$section_file\"",
     "",
     "config_file=\"$(mktemp)\"",
@@ -2675,6 +2710,12 @@ function buildExecutablePasteCommand(setupScript, marker) {
 }
 
 async function copyInstallCommand(button, setupScript, marker, toolName, fileSummary) {
+  if (!isInspectionReady()) {
+    apiStatus.textContent = "先点击「体检任务」，生成规则后再复制 Claude Code / Codex 命令。";
+    setInstallCopyEnabled(false);
+    return;
+  }
+
   const defaultLabel = button.dataset.defaultLabel || button.textContent;
   button.dataset.defaultLabel = defaultLabel;
   try {

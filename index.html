@@ -92,7 +92,15 @@
             </div>
             <div class="install-actions" aria-label="复制项目命令">
               <div class="install-action">
-                <button class="ghost copy-panel-button" id="copyClaudeBtn" type="button" aria-describedby="claudeInstallInfo">
+                <button
+                  class="ghost copy-panel-button"
+                  id="copyClaudeBtn"
+                  type="button"
+                  aria-describedby="claudeInstallInfo"
+                  aria-disabled="true"
+                  title="先点击「体检任务」，生成规则后再复制命令"
+                  disabled
+                >
                   复制 Claude Code 命令
                 </button>
                 <div class="copy-popover" id="claudeInstallInfo" role="tooltip">
@@ -101,7 +109,15 @@
                 </div>
               </div>
               <div class="install-action">
-                <button class="ghost copy-panel-button" id="copyCodexBtn" type="button" aria-describedby="codexInstallInfo">
+                <button
+                  class="ghost copy-panel-button"
+                  id="copyCodexBtn"
+                  type="button"
+                  aria-describedby="codexInstallInfo"
+                  aria-disabled="true"
+                  title="先点击「体检任务」，生成规则后再复制命令"
+                  disabled
+                >
                   复制 Codex 命令
                 </button>
                 <div class="copy-popover" id="codexInstallInfo" role="tooltip">
