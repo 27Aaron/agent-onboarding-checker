@@ -566,6 +566,26 @@ test("Claude guard hook allows the platform temp directory after realpath normal
   assert.equal(hookDecision(output), "");
 });
 
+test("Claude guard hook allows slash tmp after macOS realpath normalization", () => {
+  const output = runClaudeGuardHook({
+    hook_event_name: "PreToolUse",
+    tool_name: "Read",
+    tool_input: { file_path: "/tmp/agent-onboarding-ok.txt" },
+  });
+
+  assert.equal(hookDecision(output), "");
+});
+
+test("Claude guard hook blocks inline database password arguments", () => {
+  const output = runClaudeGuardHook({
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "mysql -u root -pMySecretPass123456 app" },
+  });
+
+  assert.equal(hookDecision(output), "deny");
+});
+
 test("Claude guard hook denies persistent permission requests for cautionary Bash commands", () => {
   const output = runClaudeGuardHook({
     hook_event_name: "PermissionRequest",

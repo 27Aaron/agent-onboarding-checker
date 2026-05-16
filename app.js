@@ -1931,12 +1931,14 @@ def normalize(path):
     return os.path.realpath(path)
 
 def in_project_or_tmp(path):
-    tmp_dir = os.path.realpath(tempfile.gettempdir())
+    tmp_dirs = {
+        os.path.realpath(tempfile.gettempdir()),
+        os.path.realpath('/tmp'),
+    }
     return (
         path.startswith(project_dir + os.sep)
         or path == project_dir
-        or path.startswith(tmp_dir + os.sep)
-        or path == tmp_dir
+        or any(path.startswith(tmp_dir + os.sep) or path == tmp_dir for tmp_dir in tmp_dirs)
     )
 
 def contains_any(patterns, text):
@@ -1964,6 +1966,7 @@ secret_value_patterns = [
     r'-----BEGIN (?:OPENSSH|RSA|EC|DSA)? ?PRIVATE KEY-----',
     r'\b(?:sk|gh[pousr]|xox[baprs]?|claude)[-_][A-Za-z0-9_\-]{20,}\b',
     r'\b(api[_-]?key|secret|token|password|cookie)\s*[:=]\s*[^\s"\']{12,}',
+    r'(?<!\S)-p(?!\s)[^\s"\']{12,}',
 ]
 
 browser_interaction_patterns = [
