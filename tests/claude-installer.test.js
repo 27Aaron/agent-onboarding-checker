@@ -63,6 +63,21 @@ function runClaudeGuardHook(payload) {
   return result.stdout.trim() ? JSON.parse(result.stdout) : {};
 }
 
+function runCodexGuardHook(payload) {
+  const root = mkdtempSync(join(tmpdir(), "agent-codex-hook-test-"));
+  const hookPath = join(root, "agent_guard.py");
+  writeFileSync(hookPath, extractRawTemplateFunctionSource("buildCodexGuardHookScript"));
+  chmodSync(hookPath, 0o755);
+  const result = spawnSync("python3", [hookPath], {
+    cwd: root,
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+  });
+  rmSync(root, { recursive: true, force: true });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim() ? JSON.parse(result.stdout) : {};
+}
+
 function hookDecision(output) {
   const hookOutput = output.hookSpecificOutput || {};
   return hookOutput.permissionDecision || hookOutput.decision?.behavior || output.decision || "";
@@ -621,7 +636,9 @@ test("Codex config uses real sandbox, approval, permissions, and hooks keys", ()
   assert.match(appSource, /\[\[hooks\.PreToolUse\]\]/);
   assert.match(appSource, /\[\[hooks\.PermissionRequest\]\]/);
   assert.match(appSource, /\[\[hooks\.UserPromptSubmit\]\]/);
-  assert.match(appSource, /git rev-parse --show-toplevel 2>\/dev\/null \|\| pwd/);
+  assert.match(appSource, /\.codex\/hooks\/agent_guard\.py/);
+  assert.match(appSource, /pwd -P/);
+  assert.match(appSource, /while \[ "\$root" != "\/" \]/);
 });
 
 test("Codex config adds privacy, connector, filesystem, and command-rule hardening", () => {
@@ -638,6 +655,8 @@ test("Codex config adds privacy, connector, filesystem, and command-rule hardeni
   assert.match(appSource, /open_world_enabled = false/);
   assert.match(appSource, /default_tools_approval_mode = "prompt"/);
   assert.match(appSource, /glob_scan_max_depth = 3/);
+  assert.match(appSource, /exclude_tmpdir_env_var = true/);
+  assert.match(appSource, /exclude_slash_tmp = true/);
   assert.equal(appSource.includes('".codex/**" = "read"'), true);
   assert.equal(appSource.includes('".git/**" = "read"'), true);
   assert.match(appSource, /function buildCodexRulesFile/);
@@ -720,4 +739,60 @@ test("Codex guard blocks bypass modes and side-effecting MCP tool calls", () => 
   assert.match(source, /dontAsk/);
   assert.match(source, /side_effecting_mcp_patterns/);
   assert.match(source, /tool\.startswith\("mcp__"\)/);
+});
+
+test("Codex rules cover shell wrappers and document non-matches", () => {
+  const rulesSource = extractFunctionSource("buildCodexRulesFile");
+
+  assert.match(rulesSource, /\[\["bash", "sh", "zsh"/);
+  assert.match(rulesSource, /\["-c", "-lc"\]/);
+  assert.match(rulesSource, /Shell wrapper commands must be reviewed/);
+  assert.match(rulesSource, /not_match =/);
+  assert.match(rulesSource, /git status/);
+  assert.match(rulesSource, /npm run build/);
+});
+
+test("Codex installer does not overwrite an existing unmarked config", () => {
+  const setupSource = extractFunctionSource("buildCodexProjectSetupScript");
+
+  assert.match(setupSource, /config\.toml\.onboarding/);
+  assert.match(setupSource, /Existing \.codex\/config\.toml has no onboarding marker/);
+  assert.match(setupSource, /review and merge/);
+});
+
+test("Codex guard denies recursive deletion and destructive SQL at runtime", () => {
+  for (const command of [
+    "rm -rf build",
+    "rm -fr build",
+    "rm -r -f build",
+    "rm --recursive --force build",
+    "sqlite3 app.db 'DROP TABLE users'",
+    "psql production -c 'TRUNCATE TABLE users'",
+    "mysql production -e 'GRANT ALL ON app.* TO bad'",
+  ]) {
+    const output = runCodexGuardHook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      permission_mode: "default",
+      tool_input: { command },
+    });
+    assert.equal(hookDecision(output), "deny", command);
+  }
+});
+
+test("Codex guard allows prompt discussion and read-only config inspection", () => {
+  const promptOutput = runCodexGuardHook({
+    hook_event_name: "UserPromptSubmit",
+    permission_mode: "default",
+    prompt: "解释一下 git push origin main 会发生什么，不要执行",
+  });
+  assert.equal(hookDecision(promptOutput), "");
+
+  const readOutput = runCodexGuardHook({
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    permission_mode: "default",
+    tool_input: { command: "sed -n '1p' .codex/config.toml" },
+  });
+  assert.equal(hookDecision(readOutput), "");
 });

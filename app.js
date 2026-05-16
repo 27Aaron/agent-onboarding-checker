@@ -2090,6 +2090,8 @@ PY`;
 }
 
 function buildCodexConfigToml() {
+  const hookCommand = 'root=$(git rev-parse --show-toplevel 2>/dev/null || pwd -P); while [ "$root" != "/" ] && [ ! -f "$root/.codex/hooks/agent_guard.py" ]; do root=$(dirname "$root"); done; if [ ! -f "$root/.codex/hooks/agent_guard.py" ]; then echo "Codex onboarding hook not found from $(pwd)" >&2; exit 2; fi; exec /usr/bin/python3 "$root/.codex/hooks/agent_guard.py"';
+
   return [
     "#:schema https://developers.openai.com/codex/config-schema.json",
     "# AGENT_ONBOARDING_CHECKER_START",
@@ -2110,8 +2112,8 @@ function buildCodexConfigToml() {
     "",
     "[sandbox_workspace_write]",
     "network_access = false",
-    "exclude_tmpdir_env_var = false",
-    "exclude_slash_tmp = false",
+    "exclude_tmpdir_env_var = true",
+    "exclude_slash_tmp = true",
     "",
     "[features]",
     "hooks = true",
@@ -2157,7 +2159,7 @@ function buildCodexConfigToml() {
     "",
     "[[hooks.PreToolUse.hooks]]",
     'type = "command"',
-    'command = \'root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); /usr/bin/python3 "$root/.codex/hooks/agent_guard.py"\'',
+    `command = '${hookCommand}'`,
     "timeout = 30",
     'statusMessage = "Checking Codex project policy"',
     "",
@@ -2166,7 +2168,7 @@ function buildCodexConfigToml() {
     "",
     "[[hooks.PermissionRequest.hooks]]",
     'type = "command"',
-    'command = \'root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); /usr/bin/python3 "$root/.codex/hooks/agent_guard.py"\'',
+    `command = '${hookCommand}'`,
     "timeout = 30",
     'statusMessage = "Checking Codex approval request"',
     "",
@@ -2174,7 +2176,7 @@ function buildCodexConfigToml() {
     "",
     "[[hooks.UserPromptSubmit.hooks]]",
     'type = "command"',
-    'command = \'root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); /usr/bin/python3 "$root/.codex/hooks/agent_guard.py"\'',
+    `command = '${hookCommand}'`,
     "timeout = 30",
     'statusMessage = "Scanning prompt for secrets"',
     "# AGENT_ONBOARDING_CHECKER_END",
@@ -2184,12 +2186,22 @@ function buildCodexConfigToml() {
 function buildCodexRulesFile() {
   return String.raw`# Agent Onboarding Checker Codex command rules.
 # Project-local rules load only after this .codex layer is trusted.
+# These rules cover direct commands and some approval paths; hooks still inspect full command strings.
+
+prefix_rule(
+    pattern = [["bash", "sh", "zsh", "/bin/bash", "/bin/sh", "/bin/zsh"], ["-c", "-lc"]],
+    decision = "prompt",
+    justification = "Shell wrapper commands must be reviewed because inner commands may hide high-risk actions.",
+    match = ["bash -lc 'git push origin main'", "zsh -c 'rm -rf build'"],
+    not_match = ["git status", "npm run build"],
+)
 
 prefix_rule(
     pattern = ["git", "push"],
     decision = "forbidden",
     justification = "Do not push from Codex. Ask a human to review and push manually.",
     match = ["git push", "git push origin main"],
+    not_match = ["git status", "git pull --ff-only"],
 )
 
 prefix_rule(
@@ -2197,6 +2209,7 @@ prefix_rule(
     decision = "prompt",
     justification = "Local commits should be reviewed by a human before Codex records them.",
     match = ["git commit -m fix-login", "git commit --amend"],
+    not_match = ["git diff --cached", "git status"],
 )
 
 prefix_rule(
@@ -2225,6 +2238,7 @@ prefix_rule(
     decision = "prompt",
     justification = "Installing or adding dependencies changes the supply-chain surface and needs approval.",
     match = ["npm install", "npm i lodash", "pnpm add zod", "yarn add zod", "bun add zod"],
+    not_match = ["npm run build", "pnpm test", "yarn lint"],
 )
 
 prefix_rule(
@@ -2278,6 +2292,7 @@ prefix_rule(
     decision = "forbidden",
     justification = "Recursive deletion must be reviewed and performed manually.",
     match = ["rm -rf build", "rm -rf /tmp/out"],
+    not_match = ["rm README.tmp", "npm run clean"],
 )
 
 prefix_rule(
@@ -2299,6 +2314,7 @@ prefix_rule(
     decision = "prompt",
     justification = "Database access requires explicit human approval and a stated data purpose.",
     match = ["psql production", "mysql production", "sqlite3 app.db"],
+    not_match = ["npm run test", "python3 scripts/check_sql.py"],
 )
 
 prefix_rule(
@@ -2313,12 +2329,14 @@ function buildCodexGuardHookScript() {
   return String.raw`#!/usr/bin/env python3
 import json
 import re
+import shlex
 import sys
 
 try:
     payload = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
+except Exception as error:
+    print(f"agent_guard.py failed to parse Codex hook payload: {error}", file=sys.stderr)
+    sys.exit(2)
 
 event = str(payload.get("hook_event_name") or "")
 tool = str(payload.get("tool_name") or "")
@@ -2378,6 +2396,49 @@ def deny(reason):
 def contains_any(patterns, text):
     return any(re.search(pattern, text, re.I) for pattern in patterns)
 
+def shell_tokens(text):
+    try:
+        return shlex.split(text)
+    except ValueError:
+        return text.split()
+
+def has_recursive_force_rm(text):
+    tokens = shell_tokens(text)
+    for index, token in enumerate(tokens):
+        if token != "rm":
+            continue
+        recursive = False
+        force = False
+        for option in tokens[index + 1:]:
+            if option == "--":
+                break
+            if not option.startswith("-"):
+                break
+            if option in {"--recursive", "--dir"}:
+                recursive = True
+            elif option == "--force":
+                force = True
+            elif option.startswith("--"):
+                continue
+            else:
+                recursive = recursive or "r" in option or "R" in option
+                force = force or "f" in option
+        if recursive and force:
+            return True
+    return False
+
+def is_probable_write_command(text):
+    write_patterns = [
+        r"(^|[\s;&|])(?:rm|mv|cp|chmod|chown|mkdir|touch)\b",
+        r"(^|[\s;&|])sed\s+.*\s-i(\s|$)",
+        r"(^|[\s;&|])perl\s+.*\s-i(\s|$)",
+        r"(^|[\s;&|])tee\b",
+        r">>|>",
+        r"\bpython(?:3)?\b.*\b(?:open|write_text|write_bytes)\b",
+        r"\bnode\b.*\b(?:writeFile|appendFile)\b",
+    ]
+    return contains_any(write_patterns, text)
+
 protected_path_patterns = [
     r"(^|[/\s\"'/])\.env(\.[^\s\"'/]*)?($|[/\s\"'/])",
     r"(^|[/\s\"'/])secrets($|[/\s\"'/])",
@@ -2410,6 +2471,11 @@ dangerous_patterns = [
     r"\b(?:systemctl|service|docker|kubectl|helm|journalctl|pm2|supervisorctl|terraform|ansible-playbook|ansible)\b",
     r"\b(?:rollout|rollback|restart|reboot|reload)\b",
     r"\b(?:drop|truncate)\s+database\b",
+    r"\bdrop\s+(?:table|schema|database|index|view)\b",
+    r"\btruncate\s+(?:table\s+)?\w+\b",
+    r"\bcreate\s+(?:table|schema|database|index|view)\b",
+    r"\bgrant\s+\w+",
+    r"\brevoke\s+\w+",
     r"\b(?:delete\s+from|update\s+\w+\s+set|insert\s+into|alter\s+table)\b",
     r"\b(?:pg_dump|mysqldump|mongoexport)\b",
     r"\baws\s+s3\s+(?:cp|sync)\b",
@@ -2434,6 +2500,15 @@ side_effecting_mcp_patterns = [
 browser_interaction_patterns = [
     r"(?:^|[_\W])(click|type|fill|press|submit|navigate|open)(?:$|[_\W])",
     r"\b(login|signin|signup|checkout|pay|purchase|subscribe|delete|confirm|password|cookie)\b",
+]
+
+bypass_prompt_patterns = [
+    r"--danger-full-access\b",
+    r"--dangerously-bypass-approvals-and-sandbox\b",
+    r"--yolo\b",
+    r"--ask-for-approval\s+never\b",
+    r"\bapproval_policy\s*=\s*[\"']never[\"']",
+    r"\bsandbox_mode\s*=\s*[\"']danger-full-access[\"']",
 ]
 
 caution_patterns = [
@@ -2461,6 +2536,11 @@ if event == "UserPromptSubmit" and contains_any(secret_value_patterns, prompt):
     emit_prompt_block("疑似把 API key、private key、cookie、token 或密码粘贴进了 Codex；请改用安全凭证注入方式。")
     sys.exit(0)
 
+if event == "UserPromptSubmit":
+    if contains_any(bypass_prompt_patterns, prompt):
+        emit_prompt_block("疑似要求 Codex 绕过 sandbox 或审批，请保留受控权限模式。")
+    sys.exit(0)
+
 if permission_mode in {"bypassPermissions", "dontAsk"}:
     deny("当前 Codex 会话处于 bypassPermissions/dontAsk 权限模式，高风险入职规则拒绝继续执行。")
     sys.exit(0)
@@ -2473,7 +2553,13 @@ if contains_any(secret_value_patterns, content):
     deny("疑似工具输入中包含真实密钥、token、cookie 或密码；请先移除敏感值。")
     sys.exit(0)
 
-if contains_any(protected_config_write_patterns, content):
+if tool == "Bash" and has_recursive_force_rm(command):
+    deny("递归强制删除已拦截：rm -rf / rm -fr / --recursive --force 需要人工手动处理。")
+    sys.exit(0)
+
+if contains_any(protected_config_write_patterns, content) and (
+    tool in {"apply_patch", "Edit", "Write", "MultiEdit"} or (tool == "Bash" and is_probable_write_command(command))
+):
     deny("禁止修改 .codex、.claude、.agents、.git 等安全控制目录。需要变更护栏时请人工编辑。")
     sys.exit(0)
 
@@ -2660,6 +2746,7 @@ function buildCodexProjectSetupScript() {
     "",
     "write_codex_config() {",
     "  file='.codex/config.toml'",
+    "  onboarding_file='.codex/config.toml.onboarding'",
     "  config_file=\"$1\"",
     "  start_marker='# AGENT_ONBOARDING_CHECKER_START'",
     "  end_marker='# AGENT_ONBOARDING_CHECKER_END'",
@@ -2670,8 +2757,11 @@ function buildCodexProjectSetupScript() {
     "      !skipping { print }",
     "    ' \"$file\" > \"$file.tmp.$$\"",
     "    mv \"$file.tmp.$$\" \"$file\"",
+    "  elif [ -f \"$file\" ]; then",
+    "    backup_if_exists \"$onboarding_file\"",
+    "    cp \"$config_file\" \"$onboarding_file\"",
+    "    printf '\\nExisting .codex/config.toml has no onboarding marker; wrote %s for you to review and merge.\\n' \"$onboarding_file\"",
     "  else",
-    "    backup_if_exists \"$file\"",
     "    cp \"$config_file\" \"$file\"",
     "  fi",
     "}",
@@ -2704,10 +2794,14 @@ function buildCodexProjectSetupScript() {
     "",
     "printf '\\nCodex onboarding files are ready in %s\\n' \"$(pwd)\"",
     "printf '  - AGENTS.md\\n'",
-    "printf '  - .codex/config.toml\\n'",
+    "printf '  - .codex/config.toml or .codex/config.toml.onboarding\\n'",
     "printf '  - .codex/rules/agent_onboarding.rules\\n'",
     "printf '  - .codex/hooks/agent_guard.py\\n'",
-    "printf '\\nNext: open Codex in this project, trust the project if prompted, then run /status, /permissions, /hooks and /debug-config to verify the active policy.\\n'",
+    "printf '\\nNext: start Codex TUI in this project, trust the project if prompted, then type:\\n'",
+    "printf '  /status\\n'",
+    "printf '  /permissions\\n'",
+    "printf '  /hooks\\n'",
+    "printf '  /debug-config\\n'",
   ].join("\n");
 }
 
