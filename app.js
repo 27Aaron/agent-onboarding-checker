@@ -1862,6 +1862,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from urllib.parse import urlparse
 
 try:
@@ -1930,27 +1931,33 @@ def normalize(path):
     return os.path.realpath(path)
 
 def in_project_or_tmp(path):
-    return path.startswith(project_dir + os.sep) or path == project_dir or path.startswith('/tmp/')
+    tmp_dir = os.path.realpath(tempfile.gettempdir())
+    return (
+        path.startswith(project_dir + os.sep)
+        or path == project_dir
+        or path.startswith(tmp_dir + os.sep)
+        or path == tmp_dir
+    )
 
 def contains_any(patterns, text):
     return any(re.search(pattern, text, re.I) for pattern in patterns)
 
 protected_path_patterns = [
-    r'(^|[/\s"\'])\.env(\.[^\s"\']*)?($|[/\s"\'])',
-    r'(^|[/\s"\'])secrets($|[/\s"\']/)',
-    r'(^|[/\s"\'])\.aws/credentials($|[/\s"\'])',
-    r'(^|[/\s"\'])\.ssh($|[/\s"\']/)',
-    r'(^|[/\s"\'])(id_rsa|id_ed25519)($|[/\s"\'])',
+    r'(^|[/\s"\'/])\.env(\.[^\s"\'/]*)?($|[/\s"\'/])',
+    r'(^|[/\s"\'/])secrets($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.aws/credentials($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.ssh($|[/\s"\'/])',
+    r'(^|[/\s"\'/])(id_rsa|id_ed25519)($|[/\s"\'/])',
 ]
 
 protected_config_write_patterns = [
-    r'(^|[/\s"\'])\.claude/settings(\.local)?\.json($|[/\s"\'])',
-    r'(^|[/\s"\'])\.claude/hooks($|[/\s"\']/)',
-    r'(^|[/\s"\'])\.codex/config\.toml($|[/\s"\'])',
-    r'(^|[/\s"\'])\.codex/hooks($|[/\s"\']/)',
-    r'(^|[/\s"\'])\.codex/rules($|[/\s"\']/)',
-    r'(^|[/\s"\'])\.agents($|[/\s"\']/)',
-    r'(^|[/\s"\'])\.git($|[/\s"\']/)',
+    r'(^|[/\s"\'/])\.claude/settings(\.local)?\.json($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.claude/hooks($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.codex/config\.toml($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.codex/hooks($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.codex/rules($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.agents($|[/\s"\'/])',
+    r'(^|[/\s"\'/])\.git($|[/\s"\'/])',
 ]
 
 secret_value_patterns = [
@@ -1984,7 +1991,7 @@ if contains_any(secret_value_patterns, content):
     deny('疑似工具输入中包含真实密钥、token、cookie 或密码；请先移除敏感值。')
     sys.exit(0)
 
-if tool not in {'Read', 'Grep', 'Glob'} and contains_any(browser_interaction_patterns, tool_content):
+if tool not in {'Read', 'Grep', 'Glob', 'Bash'} and contains_any(browser_interaction_patterns, tool_content):
     if hook_event_name == 'PermissionRequest':
         deny('浏览器登录、填表、购买、提交或删除类交互不能被持久放行，请人工逐次确认。')
     else:
@@ -2072,7 +2079,10 @@ if tool == 'Bash':
         deny('高风险命令已拦截：需要人工改写任务或手动执行。')
         sys.exit(0)
     if contains_any(ask_patterns, compact):
-        respond('ask', '命令可能删除文件、访问网络、触碰数据库、导出数据或调用本机应用，请人工确认。')
+        if hook_event_name == 'PermissionRequest':
+            deny('网络访问、文件删除、数据库操作等命令不能被持久放行，请人工逐次确认。')
+        else:
+            respond('ask', '命令可能删除文件、访问网络、触碰数据库、导出数据或调用本机应用，请人工确认。')
         sys.exit(0)
 
 sys.exit(0)
@@ -2369,18 +2379,18 @@ def contains_any(patterns, text):
     return any(re.search(pattern, text, re.I) for pattern in patterns)
 
 protected_path_patterns = [
-    r"(^|[/\s\"'])\.env(\.[^\s\"']*)?($|[/\s\"'])",
-    r"(^|[/\s\"'])secrets($|[/\s\"']/)",
-    r"(^|[/\s\"'])\.aws/credentials($|[/\s\"'])",
-    r"(^|[/\s\"'])\.ssh($|[/\s\"']/)",
-    r"(^|[/\s\"'])(id_rsa|id_ed25519)($|[/\s\"'])",
+    r"(^|[/\s\"'/])\.env(\.[^\s\"'/]*)?($|[/\s\"'/])",
+    r"(^|[/\s\"'/])secrets($|[/\s\"'/])",
+    r"(^|[/\s\"'/])\.aws/credentials($|[/\s\"'/])",
+    r"(^|[/\s\"'/])\.ssh($|[/\s\"'/])",
+    r"(^|[/\s\"'/])(id_rsa|id_ed25519)($|[/\s\"'/])",
 ]
 
 protected_config_write_patterns = [
-    r"(^|[/\s\"'])\.codex/(?:config\.toml|hooks|rules)($|[/\s\"'])",
-    r"(^|[/\s\"'])\.claude/(?:settings(?:\.local)?\.json|hooks)($|[/\s\"'])",
-    r"(^|[/\s\"'])\.agents($|[/\s\"']/)",
-    r"(^|[/\s\"'])\.git($|[/\s\"']/)",
+    r"(^|[/\s\"'/])\.codex/(?:config\.toml|hooks|rules)($|[/\s\"'/])",
+    r"(^|[/\s\"'/])\.claude/(?:settings(?:\.local)?\.json|hooks)($|[/\s\"'/])",
+    r"(^|[/\s\"'/])\.agents($|[/\s\"'/])",
+    r"(^|[/\s\"'/])\.git($|[/\s\"'/])",
 ]
 
 secret_value_patterns = [

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -32,6 +34,38 @@ function extractFunctionSource(name) {
   }
 
   throw new Error(`Could not extract ${name}`);
+}
+
+function extractRawTemplateFunctionSource(name) {
+  const source = extractFunctionSource(name);
+  const marker = "return String.raw`";
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `${name} should return a raw template`);
+  const bodyStart = start + marker.length;
+  const end = source.lastIndexOf("`;");
+  assert.notEqual(end, -1, `${name} raw template should end`);
+  return source.slice(bodyStart, end);
+}
+
+function runClaudeGuardHook(payload) {
+  const root = mkdtempSync(join(tmpdir(), "agent-claude-hook-test-"));
+  const hookPath = join(root, "agent-guard.sh");
+  writeFileSync(hookPath, extractRawTemplateFunctionSource("buildGuardHookScript"));
+  chmodSync(hookPath, 0o755);
+  const result = spawnSync("bash", [hookPath], {
+    cwd: root,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+  });
+  rmSync(root, { recursive: true, force: true });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim() ? JSON.parse(result.stdout) : {};
+}
+
+function hookDecision(output) {
+  const hookOutput = output.hookSpecificOutput || {};
+  return hookOutput.permissionDecision || hookOutput.decision?.behavior || output.decision || "";
 }
 
 function extractTaskSamples() {
@@ -487,6 +521,54 @@ test("Claude guard hook covers code, database, and browser case boundaries", () 
   ]) {
     assert.match(hookSource, pattern);
   }
+});
+
+test("Claude guard hook blocks sensitive directories and control-directory writes at runtime", () => {
+  for (const [tool, toolInput] of [
+    ["Read", { file_path: "./secrets/config.yaml" }],
+    ["Read", { file_path: "./app/secrets/key.pem" }],
+    ["Read", { file_path: "~/.ssh/config" }],
+    ["Bash", { command: "echo test > .claude/hooks/test.sh" }],
+    ["Bash", { command: "mkdir -p .git/objects" }],
+  ]) {
+    const output = runClaudeGuardHook({
+      hook_event_name: "PreToolUse",
+      tool_name: tool,
+      tool_input: toolInput,
+    });
+
+    assert.equal(hookDecision(output), "deny", `${tool} ${JSON.stringify(toolInput)} should be denied`);
+  }
+});
+
+test("Claude guard hook allows the platform temp directory after realpath normalization", () => {
+  const output = runClaudeGuardHook({
+    hook_event_name: "PreToolUse",
+    tool_name: "Read",
+    tool_input: { file_path: join(tmpdir(), "agent-onboarding-ok.txt") },
+  });
+
+  assert.equal(hookDecision(output), "");
+});
+
+test("Claude guard hook denies persistent permission requests for cautionary Bash commands", () => {
+  const output = runClaudeGuardHook({
+    hook_event_name: "PermissionRequest",
+    tool_name: "Bash",
+    tool_input: { command: "curl https://example.com" },
+  });
+
+  assert.equal(hookDecision(output), "deny");
+});
+
+test("Claude guard hook does not apply browser interaction patterns to ordinary Bash commands", () => {
+  const output = runClaudeGuardHook({
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "git checkout -b feature/test" },
+  });
+
+  assert.equal(hookDecision(output), "");
 });
 
 test("project instructions are tool-specific instead of mixing Claude and Codex rules", () => {
