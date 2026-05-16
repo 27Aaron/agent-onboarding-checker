@@ -278,6 +278,22 @@ test("curated samples have prompt-shaped local inspection results", () => {
   assert.match(appSource, /列名、行数、疑似 email\/phone\/token\/user_id/);
 });
 
+test("keyword fallback carries reviewed scenario-specific boundaries", () => {
+  const keywordSource = extractFunctionSource("buildKeywordInspectionResult");
+  const projectPolicySource = extractFunctionSource("buildTaskSpecificWorkPolicy");
+  const claudeNotesSource = extractFunctionSource("buildClaudeCodeNotes");
+  const codexNotesSource = extractFunctionSource("buildCodexNotes");
+
+  assert.match(appSource, /function hasNoCommandConstraint/);
+  assert.match(keywordSource, /只读取用户提供的线上日志片段和仓库上下文，不登录云服务器/);
+  assert.match(keywordSource, /任何 Bash、SSH、journalctl、云平台日志命令或服务器登录尝试必须阻断并转人工/);
+  assert.match(projectPolicySource, /CSV 交付前附带本地审计摘要/);
+  assert.match(projectPolicySource, /GitHub Actions 官方 secrets 不在仓库内/);
+  assert.match(projectPolicySource, /\.env\.example/);
+  assert.match(claudeNotesSource, /不要执行任何命令/);
+  assert.match(codexNotesSource, /INSTALLED_BUT_INACTIVE/);
+});
+
 test("AI inspection waits for model output instead of rendering curated samples first", () => {
   const source = extractFunctionSource("runAiAnalysis");
 

@@ -1052,6 +1052,31 @@ function getCuratedSampleResult(text) {
   return curatedSampleResults.get(String(text || "").trim()) || null;
 }
 
+function taskIncludes(text, terms) {
+  const lowerText = String(text || "").toLowerCase();
+  return terms.some((term) => lowerText.includes(String(term).toLowerCase()));
+}
+
+function hasNoCommandConstraint(text) {
+  return taskIncludes(text, ["不要执行任何命令", "不执行任何命令", "不能执行命令", "只分析", "离线分析"]);
+}
+
+function isServerLogTask(text) {
+  return taskIncludes(text, ["云服务器", "服务器", "线上", "生产", "日志", "回滚", "500"]);
+}
+
+function isDatabaseCsvTask(text) {
+  return taskIncludes(text, ["数据库", "SQL", "CSV", "名单", "流失"]);
+}
+
+function isCiTask(text) {
+  return taskIncludes(text, ["CI", "GitHub Actions", "workflow", "构建", "测试", "PR 描述"]);
+}
+
+function mentionsEnvOrSecrets(text) {
+  return taskIncludes(text, [".env", "secret", "secrets", "token", "密钥", "凭证"]);
+}
+
 function applyCuratedInspectionResult(result) {
   const task = input.value.trim() || "未填写任务";
   const level = normalizeRiskLevel(result.riskLevel) || "中风险";
@@ -1102,8 +1127,30 @@ function buildKeywordInspectionResult(text) {
       : level === "中风险"
         ? "这个任务可以交给 Claude Code / Codex，但需要明确边界，至少保留关键动作审批。"
         : "这个任务适合 Claude Code / Codex 自主处理，保留日志和只读边界即可。";
-  const permissionItems = uniq(matched.map((rule) => rule.permission));
-  const approvalItems = uniq(matched.map((rule) => rule.approval));
+  let permissionItems = uniq(matched.map((rule) => rule.permission));
+  let approvalItems = uniq(matched.map((rule) => rule.approval));
+  if (hasNoCommandConstraint(normalizedText) && isServerLogTask(normalizedText)) {
+    permissionItems = uniq([
+      "只读取用户提供的线上日志片段和仓库上下文，不登录云服务器",
+      ...permissionItems.filter((item) => !item.includes("生产环境只读观测权限")),
+    ]);
+    approvalItems = uniq([
+      "任何 Bash、SSH、journalctl、云平台日志命令或服务器登录尝试必须阻断并转人工",
+      ...approvalItems,
+    ]);
+  }
+  if (isDatabaseCsvTask(normalizedText)) {
+    approvalItems = uniq([
+      ...approvalItems,
+      "CSV 生成后必须人工审核列名、行数、聚合粒度和疑似 email/phone/token/user_id 命中情况",
+    ]);
+  }
+  if (isCiTask(normalizedText)) {
+    approvalItems = uniq([
+      ...approvalItems,
+      "仓库内疑似 token、credential、deploy key、registry token 文件必须阻断并转人工",
+    ]);
+  }
   const permissionsFallback = ["只读资料权限", "记录完整操作日志"];
   const approvalsFallback = ["访问新网站或要求额外权限时停下来问人"];
 
@@ -1424,6 +1471,18 @@ function buildClaudeCodeNotes(level, text) {
   if (level !== "低风险") {
     items.push("高/中风险任务会生成更严格的 sandbox：启用 failIfUnavailable，并关闭 dangerouslyDisableSandbox 逃逸。");
   }
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.push("任务要求不要执行任何命令时，Claude Code 只分析用户提供的日志片段和仓库上下文，不登录服务器。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("CSV 导出类任务不能只靠 hook 判断脱敏状态；交付前必须附带列名、行数和疑似敏感字段审计摘要。");
+  }
+  if (isCiTask(text)) {
+    items.push("GitHub Actions 官方 secrets 不在仓库内；仓库内疑似 token、credential、deploy key、registry token 文件必须阻断。");
+  }
+  if (mentionsEnvOrSecrets(text)) {
+    items.push("保守策略会拦截 .env、.env.*，包括 .env.example；需要模板键名时由人摘录无敏感值内容。");
+  }
   if (text.includes("客户") || text.includes("用户") || text.includes("数据") || text.includes("后台")) {
     items.push("涉及客户或后台数据时，hook 只能阻断明显危险的工具调用；数据内容审核仍必须由人或专门数据治理流程完成。");
   }
@@ -1435,11 +1494,24 @@ function buildCodexNotes(level, text) {
     "真正会被 Codex 执行的是 .codex/config.toml 里的 sandbox_mode、approval_policy、default_permissions 和 hooks；AGENTS.md 只提供模型指令。",
     "项目级 .codex/config.toml、项目本地 hooks 和 rules 只有在项目被 Codex 标记为 trusted 后才会加载；安装后必须用 /status、/permissions、/hooks 和 /debug-config 复核。",
     "Codex PreToolUse 目前适合 deny 或补充上下文，permissionDecision: ask 会 fail open；需要人确认时用 approval_policy = on-request 和 PermissionRequest hook。",
+    "如果安装时出现 .codex/config.toml.onboarding 或 INSTALLED_BUT_INACTIVE，说明已有 config 未合并，hooks 和 default_permissions 尚未生效。",
     "高风险模板会显式关闭 live/cached web_search、Codex memories 和本地历史持久化，避免客户数据被额外留存。",
     "App/connector 默认禁用 destructive/open-world 工具，并把工具调用审批模式设为 prompt。",
   ];
   if (level !== "低风险") {
     items.push("高/中风险任务建议使用 sandbox_mode = workspace-write、approval_policy = on-request，并避免 danger-full-access + never 组合。");
+  }
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.push("analysis-only 场景下，Codex 只读取用户贴出的日志片段和仓库上下文；服务器命令 hard block 依赖已启用的 hook。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("数据导出类任务需要交付字段清单、行数和敏感字段扫描摘要；hook 不能语义保证 CSV 已聚合。");
+  }
+  if (isCiTask(text)) {
+    items.push("CI 修复可以改 workflow 和测试脚本，但仓库内疑似 token、credential、deploy key、registry token 文件必须阻断。");
+  }
+  if (mentionsEnvOrSecrets(text)) {
+    items.push("默认仍拦截 .env.example/.env.sample 这类模板文件；需要配置键名时由人提供脱敏摘录。");
   }
   if (text.includes("客户") || text.includes("用户") || text.includes("数据") || text.includes("后台")) {
     items.push("涉及客户或后台数据时，Codex hook 只能拦明显命令和敏感路径；数据内容脱敏、收件人审核和审计留存仍要接业务系统。");
@@ -1464,8 +1536,17 @@ function buildClaudeSandboxRules(level, text) {
     "Claude Code：保护 .claude、.codex、.git、.agents 等控制目录，默认不允许修改自己的护栏。",
   ];
   if (level !== "低风险") items.unshift("Claude Code：网络访问默认无白名单；新增 WebFetch、curl、wget 等外部访问必须要求人工确认。");
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.unshift("Claude Code：analysis-only 任务只读用户提供的日志片段和仓库文件，Bash 生产命令默认拦截。");
+  }
   if (text.includes("后台") || text.includes("客户") || text.includes("数据")) {
     items.push("Claude Code：真实客户数据不能只靠 CLAUDE.md 保护；导出、复制和发送必须走人工确认。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("Claude Code：CSV 输出只允许写入项目 outputs/ 目录，并附带列名、行数和疑似敏感字段审计摘要。");
+  }
+  if (isCiTask(text)) {
+    items.push("Claude Code：允许修改 workflow 和测试配置，但疑似 CI token、deploy key、registry token 路径必须 deny。");
   }
   if (text.includes(".env") || text.includes("token") || text.includes("密钥")) {
     items.push("Claude Code：密钥文件通过 Read/Edit/Write deny、sandbox denyRead/denyWrite 和 PreToolUse hook 多层拦截。");
@@ -1485,8 +1566,17 @@ function buildCodexSandboxRules(level, text) {
     "Codex：添加 .codex/rules/agent_onboarding.rules，用 execpolicy prefix_rule 在 hook 之外再拦一层高危命令。",
   ];
   if (level !== "低风险") items.unshift("Codex：项目级 .codex/config.toml、hooks 和 rules 只有在项目被 trust 后才会加载，安装后必须复核。");
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.unshift("Codex：analysis-only 任务不直接执行服务器命令；如果已有 config 未合并，INSTALLED_BUT_INACTIVE 表示护栏未激活。");
+  }
   if (text.includes("后台") || text.includes("客户") || text.includes("数据")) {
     items.push("Codex：真实客户数据不能只靠 AGENTS.md 保护；导出、复制和发送必须走人工确认和业务系统脱敏。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("Codex：CSV 输出前要求字段清单、行数和疑似 email/phone/token/user_id 扫描摘要，不能只依赖命令名判断。");
+  }
+  if (isCiTask(text)) {
+    items.push("Codex：GitHub Actions 官方 secrets 不在仓库内；仓库内疑似凭证文件设为 none 或由 hook deny。");
   }
   if (text.includes("push") || text.includes("PR") || text.includes("提交")) {
     items.push("Codex：git push、publish、sudo、danger-full-access 和 approval_policy = never 直接 deny。");
@@ -1507,8 +1597,14 @@ function buildClaudeHookRules(text) {
     "Claude Code PreToolUse/Bash：拦截 git push、publish、sudo、危险 rm、数据库 drop/truncate 和 --dangerously-skip-permissions。",
     "Claude Code PreToolUse/WebSearch/Grep/Glob：搜索外部网络或项目外路径前暂停确认。",
   ];
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.push("Claude Code analysis-only-bash-guard：Bash 命中 ssh、journalctl、云平台日志命令或服务器地址 -> deny。");
+  }
   if (text.includes("网页") || text.includes("后台") || text.includes("浏览器")) {
     items.push("Claude Code 不会自动理解网页按钮的业务风险；涉及后台登录/提交时必须由人确认凭证和最终动作。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("Claude Code csv-audit-summary：CSV 生成后记录列名、行数和疑似敏感字段命中，等待人工审核。");
   }
   if (text.includes("数据") || text.includes("客户") || text.includes("用户")) {
     items.push("Claude Code：客户或用户数据导出不是 hook 能完全识别的语义动作，仍需人工审核导出用途和结果文件。");
@@ -1524,8 +1620,14 @@ function buildCodexHookRules(text) {
     "Codex PreToolUse/MCP：对命名上明显是发送、上传、删除、更新的非浏览器 MCP 调用直接阻断；这是命名启发式，不替代语义审核。",
     "Codex permission_mode 检查：如果会话已经处于 bypassPermissions 或 dontAsk，hook 会拒绝继续执行高风险动作。",
   ];
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.push("Codex analysis-only-bash-guard：Bash 命中 ssh、journalctl、云平台日志命令或服务器地址 -> deny；shell wrapper hard block 依赖 hook 已启用。");
+  }
   if (text.includes("网页") || text.includes("后台") || text.includes("浏览器")) {
     items.push("Codex 浏览器 MCP：普通 navigate/click 可用于公开调研；fill/type/submit 或命中登录、支付、删除、确认、cookie、password 时直接阻断。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("Codex csv-audit-summary：CSV 生成后补充列名、行数和疑似 email/phone/token/user_id 扫描摘要。");
   }
   if (text.includes("数据") || text.includes("客户") || text.includes("用户")) {
     items.push("Codex：客户或用户数据导出不是 hook 能完全识别的语义动作，仍需人工审核导出用途、脱敏状态和结果文件。");
@@ -1545,13 +1647,30 @@ function buildToolPolicyBrief(toolName) {
   });
 }
 
+function buildTaskSpecificWorkPolicy(text) {
+  const items = [];
+  if (hasNoCommandConstraint(text) && isServerLogTask(text)) {
+    items.push("只读取用户提供的线上日志片段和仓库上下文，不登录云服务器，也不执行 ssh、journalctl 或云平台命令。");
+  }
+  if (isDatabaseCsvTask(text)) {
+    items.push("CSV 交付前附带本地审计摘要，列出列名、行数、聚合粒度和疑似 email/phone/token/user_id 命中情况。");
+  }
+  if (isCiTask(text)) {
+    items.push("GitHub Actions 官方 secrets 不在仓库内；仓库内疑似 token、credential、deploy key、registry token 文件必须阻断并转人工。");
+  }
+  if (mentionsEnvOrSecrets(text)) {
+    items.push("保守策略会拦截 .env、.env.*，包括 .env.example；需要模板键名时由人摘录无敏感值内容。");
+  }
+  return items;
+}
+
 function buildProjectWorkPolicy() {
   const task = input.value.trim() || "未填写任务";
   const level = riskScore.textContent.trim() || "未判断";
   const reason = riskReason.textContent.trim();
   const lines = [`任务：${task}`, `风险等级：${level}`];
   if (reason) lines.push(`判断：${reason}`);
-  lines.push("", ...BASE_WORK_POLICY.map((item) => `- ${item}`));
+  lines.push("", ...uniq([...buildTaskSpecificWorkPolicy(task), ...BASE_WORK_POLICY]).map((item) => `- ${item}`));
   return lines.join("\n");
 }
 
