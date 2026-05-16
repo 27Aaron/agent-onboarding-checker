@@ -222,6 +222,7 @@ const SYSTEM_PROMPT = `你是“AI 入职体检器”的安全策略生成器，
 Claude Code / Codex 准确性规则：
 - CLAUDE.md 和 AGENTS.md 只是模型指令或上下文提醒，不是真正的强制边界。
 - Claude Code 真正会执行的是 .claude/settings.json 里的 permissions、sandbox、hooks 和工具审批。
+- Claude Code 的 settings.json 和 agent-guard.sh 是稳定通用硬护栏；不同任务不需要生成完全不同的 hook，任务差异主要写入 CLAUDE.md 的工作制度、权限边界、人工确认点和交付自检。
 - Codex 真正会执行的是 .codex/config.toml 里的 sandbox_mode、approval_policy、default_permissions、hooks、rules 和项目 trust。
 - Codex 的 PreToolUse 不要声称可以可靠 ask；它适合 deny 或 additionalContext。需要人工确认时依赖 approval_policy = on-request 或 PermissionRequest。
 - 不要声称自动脱敏、30 天日志留存、快照回滚、外部发送审批已经实现；除非说明需要另接业务系统。
@@ -254,9 +255,10 @@ Claude Code / Codex 准确性规则：
 - 不发送、不删除、不提交任何未经确认的结果。
 
 Claude Code 配置镜像：
+- settings.json 与 agent-guard.sh 是稳定通用硬护栏，CLAUDE.md 承载任务特化说明；不要声称底层 hook/settings 会因为不同任务自动大幅变化。
 - defaultMode = default，disableBypassPermissionsMode = disable。
 - sandbox.enabled = true，failIfUnavailable = true，autoAllowBashIfSandboxed = false，allowUnsandboxedCommands = false。
-- filesystem.allowRead 只放当前项目，allowWrite 只放当前项目和 /tmp；denyRead/denyWrite 覆盖 .env、secrets、.aws/credentials、.ssh、.git、.claude、.codex、.agents。
+- filesystem.allowRead 只放当前项目，allowWrite 只放当前项目和 /tmp；hook 对 macOS /tmp realpath 做兜底；denyRead/denyWrite 覆盖 .env、secrets、.aws/credentials、.ssh、.git、.claude、.codex、.agents。
 - network.allowedDomains = 空，deniedDomains = 空，allowLocalBinding = false，allowUnixSockets = 空。
 - skipWebFetchPreflight = false，allowedHttpHookUrls = 空，httpHookAllowedEnvVars = 空。
 - hooks 覆盖 PreToolUse、PermissionRequest、UserPromptSubmit、UserPromptExpansion；PreToolUse/PermissionRequest matcher 覆盖 Bash、Read、Edit、Write、MultiEdit、WebFetch、WebSearch、Glob、Grep。
@@ -285,7 +287,7 @@ Codex 配置镜像：
 
 敏感内容镜像：
 - 敏感路径：.env、.env.*、secrets、.aws/credentials、.ssh、id_rsa、id_ed25519、用户级 .aws、gcloud、kube、docker、.npmrc、.pypirc、.netrc、.claude/settings、.claude/hooks、.codex/config、.codex/hooks、.codex/rules、.agents、.git。
-- 敏感值：-----BEGIN .*PRIVATE KEY-----、sk-、ghp_/gho_/ghu_/ghs_/ghr_、xoxb-/xoxp-/xoxa-、claude-、api_key、secret、token、password、cookie。UserPromptSubmit 必须阻断用户误粘贴密钥；工具输入里出现这些值也必须 deny。
+- 敏感值：-----BEGIN .*PRIVATE KEY-----、sk-、ghp_/gho_/ghu_/ghs_/ghr_、xoxb-/xoxp-/xoxa-、claude-、api_key、secret、token、password、cookie、数据库命令中的 -pPassword。UserPromptSubmit 必须阻断用户误粘贴密钥；工具输入里出现这些值也必须 deny。
 - 不要让 hook 本身变成外传通道；HTTP hook 出口默认关闭，环境变量出口默认关闭。
 
 安全边界：
@@ -1412,6 +1414,7 @@ copyPromptBtn.addEventListener("click", async () => {
 function buildClaudeCodeNotes(level, text) {
   const items = [
     "真正会被 Claude Code 执行的是 .claude/settings.json 里的 permissions、sandbox 和 PreToolUse hook；CLAUDE.md 只提供上下文提醒。",
+    "复制命令里的 .claude/settings.json 与 agent-guard.sh 是稳定通用底座；任务差异主要进入 CLAUDE.md 的工作制度、权限边界和人工确认点。",
     "自动脱敏、日志保留 30 天、快照回滚和外部发送审批不会凭空发生，需要另接脱敏、审计、备份或消息系统。",
     "项目级 settings 只在从该项目目录启动 Claude Code 时稳定生效；安装后建议用 /status、/permissions、/hooks 和 /sandbox 复核。",
     "PermissionRequest、UserPromptSubmit 和 UserPromptExpansion 也会接入同一个门卫，减少误粘贴密钥或持久化危险权限的机会。",

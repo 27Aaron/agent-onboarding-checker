@@ -173,6 +173,7 @@ test("default UI does not show generated counts before inspection", () => {
 
 test("AI prompt keeps generated guidance aligned to the current task", () => {
   const promptSource = extractSystemPromptSource();
+  const claudeNotesSource = extractFunctionSource("buildClaudeCodeNotes");
 
   assert.match(promptSource, /你是“AI 入职体检器”的安全策略生成器/);
   assert.match(promptSource, /所有内容都必须围绕用户当前任务/);
@@ -197,6 +198,11 @@ test("AI prompt keeps generated guidance aligned to the current task", () => {
   assert.match(promptSource, /Claude Code 配置镜像/);
   assert.match(promptSource, /disableBypassPermissionsMode/);
   assert.match(promptSource, /allowedHttpHookUrls = 空/);
+  assert.match(promptSource, /稳定通用硬护栏/);
+  assert.match(promptSource, /任务差异主要写入 CLAUDE\.md/);
+  assert.match(promptSource, /-pPassword/);
+  assert.match(claudeNotesSource, /稳定通用底座/);
+  assert.match(claudeNotesSource, /任务差异主要进入 CLAUDE\.md/);
   assert.match(promptSource, /Codex 配置镜像/);
   assert.match(promptSource, /web_search = disabled/);
   assert.match(promptSource, /history.persistence = none/);
