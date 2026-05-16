@@ -191,6 +191,10 @@ test("AI prompt keeps generated guidance aligned to the current task", () => {
   assert.match(promptSource, /只读数据库任务/);
   assert.match(promptSource, /云服务器和生产日志任务/);
   assert.match(promptSource, /CI 和发布任务/);
+  assert.match(promptSource, /不要执行任何命令/);
+  assert.match(promptSource, /用户提供日志片段/);
+  assert.match(promptSource, /GitHub Actions 官方 secrets 不在仓库内/);
+  assert.match(promptSource, /CSV 交付前必须附带列名、行数/);
   assert.match(promptSource, /curl、wget、scp、rsync、aws s3、gsutil、rclone、mail、sendmail/);
   assert.match(promptSource, /风险关键词镜像/);
   assert.match(promptSource, /登录\/账号\/后台\/cookie\/密码\/token -> 临时账号权限/);
@@ -221,10 +225,11 @@ test("sample tasks are five curated cases and randomize without auto-running che
   assert.ok(samples.some((sample) => sample.includes("登录回调 bug") && sample.includes(".env")));
   assert.ok(samples.some((sample) => sample.includes("竞品官网") && sample.includes("截图")));
   assert.ok(samples.some((sample) => sample.includes("只读数据库") && sample.includes("CSV")));
-  assert.ok(samples.some((sample) => sample.includes("云服务器") && sample.includes("回滚方案")));
+  assert.ok(samples.some((sample) => sample.includes("云服务器") && sample.includes("日志片段") && sample.includes("回滚方案")));
   assert.ok(samples.some((sample) => sample.includes("CI 配置") && sample.includes("PR 描述")));
   assert.ok(samples.every((sample) => !sample.includes("公司后台")));
   assert.ok(samples.every((sample) => !sample.includes("登录邮箱")));
+  assert.ok(samples.every((sample) => !sample.includes("登录云服务器")));
   assert.ok(samples.every((sample) => !sample.includes("云控制台")));
   assert.match(htmlSource, /placeholder="描述准备交给 Claude Code 或 Codex 的任务"/);
   assert.match(appSource, /function getRandomSampleIndex/);
@@ -267,6 +272,10 @@ test("curated samples have prompt-shaped local inspection results", () => {
   assert.match(appSource, /applyCuratedInspectionResult\(curatedResult\)/);
   assert.match(appSource, /policyBadge\.textContent = "精选版"/);
   assert.match(appSource, /已按精选案例生成本地体检结果/);
+  assert.match(appSource, /分析已提供的线上日志片段/);
+  assert.match(appSource, /不登录云服务器/);
+  assert.match(appSource, /GitHub Actions 官方 secrets 不在仓库内/);
+  assert.match(appSource, /列名、行数、疑似 email\/phone\/token\/user_id/);
 });
 
 test("AI inspection waits for model output instead of rendering curated samples first", () => {
@@ -788,6 +797,8 @@ test("Codex installer does not overwrite an existing unmarked config", () => {
   assert.match(setupSource, /config\.toml\.onboarding/);
   assert.match(setupSource, /Existing \.codex\/config\.toml has no onboarding marker/);
   assert.match(setupSource, /MERGE_INSTRUCTIONS\.md/);
+  assert.match(setupSource, /INSTALLED_BUT_INACTIVE/);
+  assert.match(setupSource, /hooks = false/);
   assert.match(setupSource, /onboarding config is not active until merged/);
   assert.match(setupSource, /approval_policy, sandbox_mode, default_permissions/);
   assert.match(setupSource, /review and merge/);

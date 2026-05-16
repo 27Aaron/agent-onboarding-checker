@@ -215,7 +215,7 @@ const SYSTEM_PROMPT = `你是“AI 入职体检器”的安全策略生成器，
 任务对齐规则：
 - 每个字段都要引用任务里的关键对象和动作，例如仓库、网页、数据库、云服务器、服务器日志、截图、PR、删除、发送等。
 - 如果任务没有客户数据，就不要写客户数据；没有数据库，就不要写数据库；没有外部发送，就不要凭空写发送审批。
-- 如果用户明确说“不要发送 / 不要推送 / 不要删除 / 先确认”，把它写成边界和确认点，不要反过来说已经允许执行。
+- 如果用户明确说“不要发送 / 不要推送 / 不要删除 / 不要执行任何命令 / 先确认”，把它写成边界和确认点，不要反过来说已经允许执行。
 - permissions 写“能做什么”，approvals 写“做到哪一步必须停下来问人”，两者不要互相重复。
 - hooks 要贴近真实工具调用，例如 Bash、Read/Edit/Write、WebFetch、PermissionRequest、UserPromptSubmit、数据库命令、外部发送命令。
 
@@ -230,9 +230,9 @@ Claude Code / Codex 准确性规则：
 场景细化规则：
 - 代码仓库任务：允许读写当前仓库内相关源码和测试；禁止读取 .env、secrets、.ssh、.aws/credentials、npmrc、pypirc、netrc、kubeconfig、docker/gcloud 凭证；依赖安装、修改认证/CI/发布配置或扩大改动范围前要确认；git commit 走确认；git push、git tag、gh pr create/merge/edit/close、gh release、publish 必须 deny。
 - 网页和浏览器任务：WebFetch、curl、wget、浏览器访问新增域名要确认；截图和公开页面整理可以放行；登录、填表、购买、订阅、提交、删除、下载私有文件或读取 cookie/token 必须暂停；Codex MCP 浏览器工具命中发送、上传、删除、更新、确认类动作时直接 deny。
-- 只读数据库任务：允许限定时间窗口和字段的 SELECT；psql、mysql、sqlite3、连接串、pg_dump、mysqldump、mongoexport 需要确认；delete/update/insert/alter/drop/truncate 必须 deny；导出 CSV 只能写入项目目录并最小化字段，包含可识别用户数据时必须人工审核。
-- 云服务器和生产日志任务：ssh、scp、rsync、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible 都属于高风险；查看日志也要限定服务名和时间窗口；restart、rollback、rollout、deploy、apply、delete 必须暂停或 deny；回滚方案只能生成文档，不自动执行。
-- CI 和发布任务：允许本地测试、lint、typecheck 和最小 CI 配置修复；读取 CI secrets、deploy key、token 必须 deny；npm/pnpm/yarn/bun/pip/uv/poetry install/add、修改 workflow 权限或发布 job 要确认；远端 PR、release、tag、push、publish 必须人工处理。
+- 只读数据库任务：允许限定时间窗口和字段的 SELECT；psql、mysql、sqlite3、连接串、pg_dump、mysqldump、mongoexport 需要确认；delete/update/insert/alter/drop/truncate 必须 deny；导出 CSV 只能写入项目目录并最小化字段；CSV 交付前必须附带列名、行数、是否包含疑似 email/phone/token/user_id，包含可识别用户数据时必须人工审核。
+- 云服务器和生产日志任务：ssh、scp、rsync、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible 都属于高风险；如果任务写着不要执行任何命令，就改成用户提供日志片段、Agent 只做离线分析；查看日志也要限定服务名和时间窗口；restart、rollback、rollout、deploy、apply、delete 必须暂停或 deny；回滚方案只能生成文档，不自动执行。
+- CI 和发布任务：允许本地测试、lint、typecheck 和最小 CI 配置修复；GitHub Actions 官方 secrets 不在仓库内，仓库内疑似 token/credential/deploy key/registry token 文件必须阻断；npm/pnpm/yarn/bun/pip/uv/poetry install/add、修改 workflow 权限或发布 job 要确认；远端 PR、release、tag、push、publish 必须人工处理。
 - 外传和网络命令：curl、wget、scp、rsync、aws s3、gsutil、rclone、mail、sendmail、sftp、ftp 都可能外传数据，默认走人工确认；如果任务没有明确外发目标，不要授予外发权限。
 
 风险关键词镜像：
@@ -351,7 +351,7 @@ const taskSamples = [
   "帮我修复仓库里的登录回调 bug，可以改代码和跑测试，但不要读取 .env，也不要 git push。",
   "帮我用浏览器打开竞品官网、价格页和帮助中心，截图记录差异，整理成一份对比文档。",
   "帮我连接只读数据库，统计近 30 天流失用户，按城市和套餐分组生成 CSV，不要外发。",
-  "帮我登录云服务器查看线上错误日志，定位 500 报错原因，给出回滚方案但不要执行任何命令。",
+  "我会提供云服务器线上错误日志片段，帮我定位 500 报错原因，给出回滚方案但不要执行任何命令。",
   "帮我检查 CI 配置并修复构建失败，跑完测试后生成 PR 描述，但不要提交或推送。",
 ];
 
@@ -490,6 +490,7 @@ const curatedSampleResults = new Map([
         "查询范围固定为近 30 天流失用户，不自行扩大范围。",
         "结果优先聚合到城市和套餐维度，避免保留直接身份标识。",
         "CSV 文件名、字段列表、行数和脱敏规则必须写入交付摘要。",
+        "CSV 交付前附带本地审计摘要，列出列名、行数、疑似 email/phone/token/user_id 命中情况。",
         "不把数据库凭证、连接串或原始用户明细写入日志和文档。",
       ],
       sandboxRules: [
@@ -510,17 +511,17 @@ const curatedSampleResults = new Map([
     taskSamples[3],
     {
       riskLevel: "高风险",
-      riskReason: "任务需要登录云服务器查看线上日志，虽然要求不执行任何命令，但服务器访问和回滚建议都接近生产权限。",
+      riskReason: "任务围绕云服务器线上错误日志和回滚方案，即使只分析用户提供的日志片段，也接近生产事故处理边界。",
       claudeNotes: [
-        "CLAUDE.md 可以声明不执行命令，但真正要在 .claude/settings.json 和 Bash hook 中拦截 ssh、sudo、systemctl、docker、kubectl 等生产动作。",
-        "Claude Code 不应接触服务器私钥或密码，登录凭证由人类在受控终端或临时会话中处理。",
-        "如果需要查看日志，优先由人提供日志片段；ssh、journalctl 或云平台日志命令不应由 Agent 直接执行。",
+        "CLAUDE.md 要把本任务写成分析已提供的线上日志片段，不登录云服务器、不执行任何服务器命令。",
+        "真正要在 .claude/settings.json 和 Bash hook 中拦截 ssh、sudo、systemctl、docker、kubectl、journalctl 等生产动作。",
+        "Claude Code 不应接触服务器私钥或密码，凭证由人类在受控终端或临时会话中处理。",
         "回滚方案只能写成建议和步骤清单，不自动执行。",
       ],
       codexNotes: [
-        "Codex 必须避免 danger-full-access + never，云服务器相关命令应通过 on-request 审批。",
+        "Codex 应按 analysis-only 方式处理：读取用户贴出的日志片段和仓库上下文，不登录云服务器。",
         "AGENTS.md 不能限制生产服务器操作，ssh、scp、rsync、sudo、systemctl、kubectl、helm、journalctl、pm2、supervisorctl、ansible-playbook 等要靠 hooks/rules 阻断。",
-        "Codex PreToolUse 可以 deny 生产命令；普通日志内容应由用户提供片段或通过 PermissionRequest 明确一次性审批。",
+        "Codex PreToolUse 可以 deny 生产命令；如果已有 config 未合并，shell wrapper 的 hard block 依赖 hook，需要复核 /hooks。",
         "服务器日志若包含 token、用户数据或内部 URL，输出前要做最小化摘录。",
       ],
       permissions: [
@@ -530,13 +531,13 @@ const curatedSampleResults = new Map([
         "读取仓库中与报错服务相关的配置和代码，用于比对日志。",
       ],
       approvals: [
-        "任何登录云服务器、使用 SSH 私钥或读取服务器凭证前必须由人确认。",
+        "任何尝试登录云服务器、使用 SSH 私钥或读取服务器凭证的动作必须阻断并转人工。",
         "执行任意服务器命令、ssh、sudo、systemctl、service、docker、kubectl、helm、journalctl、pm2、supervisorctl、terraform、ansible-playbook、重启或回滚前必须阻断。",
         "复制完整日志、包含 token/用户数据的日志片段或上传日志前必须审核。",
         "把回滚方案转为实际操作、修改生产配置或触发部署前必须暂停。",
       ],
       workPolicy: [
-        "优先让人提供日志片段；如必须连接服务器，Agent 只生成命令建议，不直接执行 ssh 或 journalctl。",
+        "只分析已提供的线上日志片段和仓库上下文，不登录云服务器、不执行 ssh、journalctl 或云平台命令。",
         "不执行修复、重启、回滚、部署或配置修改命令。",
         "分析必须写清时间窗口、错误特征、可能原因和需要人工验证的证据。",
         "回滚方案只作为文档交付，不触发任何生产动作。",
@@ -549,7 +550,7 @@ const curatedSampleResults = new Map([
         "保留访问目的、批准人、时间窗口和读取的日志文件名，避免记录凭证。",
       ],
       hooks: [
-        "server-login-deny：Bash 命中 ssh、云服务器地址或 SSH 私钥路径 -> deny",
+        "analysis-only-bash-guard：Bash 命中 ssh、journalctl、云服务器地址或 SSH 私钥路径 -> deny",
         "prod-command-deny：命中 sudo/systemctl/service/docker/kubectl/helm/journalctl/pm2/supervisorctl/terraform/ansible-playbook/回滚/重启 -> deny",
         "log-secret-scan：日志输出包含 token、cookie、password、authorization -> 阻断并要求脱敏",
         "rollback-doc-only：出现执行回滚、部署、restart 等动作 -> deny，只允许生成方案文档",
@@ -569,7 +570,7 @@ const curatedSampleResults = new Map([
       ],
       codexNotes: [
         "Codex 的 .codex/config.toml 应限制为 workspace-write + on-request，允许 CI 文件改动但拒绝远端推送。",
-        "default_permissions 要把 .git、.github secrets、.env、CI token 路径降为只读或 none。",
+        "GitHub Actions 官方 secrets 不在仓库内；仓库内疑似 token、credential、deploy key、registry token 文件必须阻断。",
         "PreToolUse/rules 对 git push、git tag、gh pr create/merge/edit/close、gh release、publish 等远端动作直接 deny。",
         "Codex rules 将 git commit 设为 prompt，依赖安装设为 prompt；PermissionRequest 用于网络测试或修改大范围构建脚本前确认。",
       ],
@@ -2789,14 +2790,21 @@ function buildCodexProjectSetupScript() {
     "    cat > \"$merge_file\" <<'AGENT_ONBOARDING_MERGE'",
     "# Codex onboarding config merge",
     "",
+    "Status: INSTALLED_BUT_INACTIVE",
+    "",
     "Current .codex/config.toml already existed, so onboarding config is not active until merged.",
+    "If the current .codex/config.toml contains hooks = false, the guard hook will not run until you merge [features] hooks = true.",
     "",
     "Review .codex/config.toml.onboarding and merge at least: approval_policy, sandbox_mode, default_permissions, [sandbox_workspace_write], [features], [shell_environment_policy], [apps.\"_default\"], [permissions.agent_onboarding_guarded.*], and [[hooks.*]].",
+    "Shell wrapper hard-blocks such as bash -lc 'git push ...' depend on the hook being active; rules alone only prompt for shell wrappers.",
     "",
     "After merging, start Codex TUI in this project, trust the project, then type /hooks, /permissions, and /debug-config.",
     "AGENT_ONBOARDING_MERGE",
     "    printf '\\nExisting .codex/config.toml has no onboarding marker; wrote %s for you to review and merge.\\n' \"$onboarding_file\"",
-    "    printf 'IMPORTANT: onboarding config is not active until merged. See %s.\\n' \"$merge_file\"",
+    "    printf 'STATUS: INSTALLED_BUT_INACTIVE - onboarding config is not active until merged. See %s.\\n' \"$merge_file\"",
+    "    if grep -Eq '^[[:space:]]*hooks[[:space:]]*=[[:space:]]*false' \"$file\"; then",
+    "      printf 'WARNING: existing config contains hooks = false; onboarding guard hook will not run until merged.\\n'",
+    "    fi",
     "  else",
     "    cp \"$config_file\" \"$file\"",
     "  fi",
