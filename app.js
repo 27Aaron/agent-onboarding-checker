@@ -870,7 +870,7 @@ function getPanelItems(node) {
 function removeToolNamePrefix(item, toolName) {
   return String(item || "")
     .replace(new RegExp(`^${toolName}\\s*[：:]\\s*`), "")
-    .replace(new RegExp(`^${toolName}\\s+`), "")
+    .replace(new RegExp(`^${toolName}\\s+(?!的)`), "")
     .trim();
 }
 
@@ -1517,11 +1517,11 @@ function buildCodexHookRules(text) {
     "Codex PreToolUse：只返回 deny 或 additionalContext，不使用尚未支持的 ask 决策。",
     "Codex PermissionRequest：当 sandbox 或网络边界触发审批时二次检查，危险请求直接 deny，普通请求交给用户审批。",
     "Codex UserPromptSubmit：拦截用户误粘贴的 API key、private key、cookie、token 或密码。",
-    "Codex PreToolUse/MCP：对命名上明显是发送、上传、删除、更新的 MCP 调用直接阻断，要求人类改用手动流程。",
+    "Codex PreToolUse/MCP：对命名上明显是发送、上传、删除、更新的非浏览器 MCP 调用直接阻断；这是命名启发式，不替代语义审核。",
     "Codex permission_mode 检查：如果会话已经处于 bypassPermissions 或 dontAsk，hook 会拒绝继续执行高风险动作。",
   ];
   if (text.includes("网页") || text.includes("后台") || text.includes("浏览器")) {
-    items.push("Codex hook 不能自动理解网页按钮的业务风险；涉及后台登录/提交时必须由人确认凭证和最终动作。");
+    items.push("Codex 浏览器 MCP：普通 navigate/click 可用于公开调研；fill/type/submit 或命中登录、支付、删除、确认、cookie、password 时直接阻断。");
   }
   if (text.includes("数据") || text.includes("客户") || text.includes("用户")) {
     items.push("Codex：客户或用户数据导出不是 hook 能完全识别的语义动作，仍需人工审核导出用途、脱敏状态和结果文件。");
@@ -2291,10 +2291,18 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["rm", "-rf"],
+    pattern = ["rm", ["-rf", "-fr"]],
     decision = "forbidden",
     justification = "Recursive deletion must be reviewed and performed manually.",
-    match = ["rm -rf build", "rm -rf /tmp/out"],
+    match = ["rm -rf build", "rm -fr build", "rm -rf /tmp/out"],
+    not_match = ["rm README.tmp", "npm run clean"],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-r", "-R", "--recursive"]],
+    decision = "prompt",
+    justification = "Recursive deletion without force still needs review; hook will hard-block recursive+force variants.",
+    match = ["rm -r build", "rm -R build", "rm --recursive build"],
     not_match = ["rm README.tmp", "npm run clean"],
 )
 
@@ -2500,10 +2508,16 @@ side_effecting_mcp_patterns = [
     r"(?:^|[_\W])(send|mail|message|upload|delete|remove|destroy|create|update|post|put|patch|publish|share|invite)(?:$|[_\W])",
 ]
 
-browser_interaction_patterns = [
-    r"(?:^|[_\W])(click|type|fill|press|submit|navigate|open)(?:$|[_\W])",
+risky_browser_words = [
     r"\b(login|signin|signup|checkout|pay|purchase|subscribe|delete|confirm|password|cookie)\b",
 ]
+
+browser_mutating_tools = {
+    "mcp__browser__fill",
+    "mcp__browser__type",
+    "mcp__browser__press",
+    "mcp__browser__submit",
+}
 
 bypass_prompt_patterns = [
     r"--danger-full-access\b",
@@ -2570,12 +2584,17 @@ if contains_any(dangerous_patterns, content):
     deny("高风险 Codex 操作已拦截：不要推送、发布、提权、删除根目录、绕过 sandbox 或把 approval_policy 改成 never。")
     sys.exit(0)
 
-if tool.startswith("mcp__") and contains_any(side_effecting_mcp_patterns, content):
+if tool.startswith("mcp__") and not tool.startswith("mcp__browser__") and contains_any(side_effecting_mcp_patterns, content):
     deny("疑似 side-effecting MCP 工具调用已阻断：发送、上传、删除、发布或更新外部系统前必须人工处理。")
     sys.exit(0)
 
-if tool.startswith("mcp__") and contains_any(browser_interaction_patterns, tool_content):
-    deny("疑似浏览器登录、填表、购买、提交或删除类交互已阻断，请人工逐次确认。")
+if tool.startswith("mcp__browser__"):
+    if tool in browser_mutating_tools:
+        deny("浏览器填表、输入、按键或提交动作已阻断，请人工逐次确认。")
+        sys.exit(0)
+    if contains_any(risky_browser_words, tool_content):
+        deny("疑似浏览器登录、购买、删除、确认或凭证类交互已阻断，请人工逐次确认。")
+        sys.exit(0)
     sys.exit(0)
 
 if event == "PreToolUse" and tool == "Bash" and contains_any(caution_patterns, command):
@@ -2763,7 +2782,18 @@ function buildCodexProjectSetupScript() {
     "  elif [ -f \"$file\" ]; then",
     "    backup_if_exists \"$onboarding_file\"",
     "    cp \"$config_file\" \"$onboarding_file\"",
+    "    merge_file='.codex/MERGE_INSTRUCTIONS.md'",
+    "    cat > \"$merge_file\" <<'AGENT_ONBOARDING_MERGE'",
+    "# Codex onboarding config merge",
+    "",
+    "Current .codex/config.toml already existed, so onboarding config is not active until merged.",
+    "",
+    "Review .codex/config.toml.onboarding and merge at least: approval_policy, sandbox_mode, default_permissions, [sandbox_workspace_write], [features], [shell_environment_policy], [apps.\"_default\"], [permissions.agent_onboarding_guarded.*], and [[hooks.*]].",
+    "",
+    "After merging, start Codex TUI in this project, trust the project, then type /hooks, /permissions, and /debug-config.",
+    "AGENT_ONBOARDING_MERGE",
     "    printf '\\nExisting .codex/config.toml has no onboarding marker; wrote %s for you to review and merge.\\n' \"$onboarding_file\"",
+    "    printf 'IMPORTANT: onboarding config is not active until merged. See %s.\\n' \"$merge_file\"",
     "  else",
     "    cp \"$config_file\" \"$file\"",
     "  fi",
@@ -2798,6 +2828,7 @@ function buildCodexProjectSetupScript() {
     "printf '\\nCodex onboarding files are ready in %s\\n' \"$(pwd)\"",
     "printf '  - AGENTS.md\\n'",
     "printf '  - .codex/config.toml or .codex/config.toml.onboarding\\n'",
+    "if [ -f .codex/MERGE_INSTRUCTIONS.md ]; then printf '  - .codex/MERGE_INSTRUCTIONS.md\\n'; fi",
     "printf '  - .codex/rules/agent_onboarding.rules\\n'",
     "printf '  - .codex/hooks/agent_guard.py\\n'",
     "printf '\\nNext: start Codex TUI in this project, trust the project if prompted, then type:\\n'",

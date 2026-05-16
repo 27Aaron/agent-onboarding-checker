@@ -733,7 +733,8 @@ test("Codex guards cover code, database, browser, and egress case boundaries", (
     /update\\s\+\\w\+\\s\+set/,
     /insert\\s\+into/,
     /alter\\s\+table/,
-    /browser_interaction_patterns/,
+    /risky_browser_words/,
+    /browser_mutating_tools/,
   ]) {
     assert.match(hookSource, pattern);
   }
@@ -767,6 +768,9 @@ test("Codex rules cover shell wrappers and document non-matches", () => {
   assert.match(rulesSource, /\[\["bash", "sh", "zsh"/);
   assert.match(rulesSource, /\["-c", "-lc"\]/);
   assert.match(rulesSource, /Shell wrapper commands must be reviewed/);
+  assert.match(rulesSource, /"-fr"/);
+  assert.match(rulesSource, /"--recursive"/);
+  assert.match(rulesSource, /Recursive deletion without force still needs review/);
   assert.match(rulesSource, /not_match =/);
   assert.match(rulesSource, /git status/);
   assert.match(rulesSource, /npm run build/);
@@ -777,6 +781,9 @@ test("Codex installer does not overwrite an existing unmarked config", () => {
 
   assert.match(setupSource, /config\.toml\.onboarding/);
   assert.match(setupSource, /Existing \.codex\/config\.toml has no onboarding marker/);
+  assert.match(setupSource, /MERGE_INSTRUCTIONS\.md/);
+  assert.match(setupSource, /onboarding config is not active until merged/);
+  assert.match(setupSource, /approval_policy, sandbox_mode, default_permissions/);
   assert.match(setupSource, /review and merge/);
 });
 
@@ -815,4 +822,40 @@ test("Codex guard allows prompt discussion and read-only config inspection", () 
     tool_input: { command: "sed -n '1p' .codex/config.toml" },
   });
   assert.equal(hookDecision(readOutput), "");
+});
+
+test("Codex guard allows ordinary browser research but blocks risky browser actions", () => {
+  for (const [tool, toolInput] of [
+    ["mcp__browser__navigate", { url: "https://example.com/pricing" }],
+    ["mcp__browser__click", { selector: "#pricing", text: "pricing" }],
+  ]) {
+    const output = runCodexGuardHook({
+      hook_event_name: "PreToolUse",
+      tool_name: tool,
+      permission_mode: "default",
+      tool_input: toolInput,
+    });
+    assert.equal(hookDecision(output), "", `${tool} ${JSON.stringify(toolInput)} should be allowed`);
+  }
+
+  for (const [tool, toolInput] of [
+    ["mcp__browser__navigate", { url: "https://example.com/login" }],
+    ["mcp__browser__click", { selector: "#delete-account", text: "delete account" }],
+    ["mcp__browser__fill", { selector: "#email", text: "user@example.com" }],
+  ]) {
+    const output = runCodexGuardHook({
+      hook_event_name: "PreToolUse",
+      tool_name: tool,
+      permission_mode: "default",
+      tool_input: toolInput,
+    });
+    assert.equal(hookDecision(output), "deny", `${tool} ${JSON.stringify(toolInput)} should be denied`);
+  }
+});
+
+test("Codex project docs do not strip possessive tool names", () => {
+  const prefixSource = extractFunctionSource("removeToolNamePrefix");
+
+  assert.match(appSource, /Codex 的 AGENTS\.md 只能描述调研边界/);
+  assert.match(prefixSource, /\(\?!的\)/);
 });
